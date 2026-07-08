@@ -25,6 +25,40 @@ D. Design: screen-by-screen spec, thumb-zone audit, gesture design, platform con
 [Milestone B — ongoing]
 16. Ongoing: crash monitoring, OS updates, store reviews
 
+## Development (Phase 1+)
+
+**Layout:** `app/` (Expo managed workflow, SDK 57, TypeScript strict) · `server/` (Fastify 5 +
+PostgreSQL game server, **separate from the workbench mcp-server**) · `compose.yml` (the
+portable game stack: game-server + game-db) · canon in `design/` and `docs/`. The authoritative
+SDLC record is `docs/product-development/sdlc.md` (AI Service Layer builds at Phase 3; V1 ends
+in a **beta launch**, public launch after V2).
+
+**Dev loop:**
+- Server: `cd server && npm run dev` → http://localhost:4000 (`GET /health` to verify).
+  In-memory storage in Phase 1; Postgres arrives with the Phase 2 schema.
+- App: `cd app && npx expo start` (host-side; the container has no simulator). Point a
+  simulator or Expo Go at it. `EXPO_PUBLIC_API_URL` sets the server base URL — `localhost:4000`
+  for simulators, the dev machine's LAN IP for physical devices (see `app/.env.example`).
+- Prod-like stack: `docker compose up` at the workspace root.
+
+**Quality gates (run before staging anything):**
+- `cd server && npm run typecheck && npm test` (Vitest)
+- `cd app && npm run typecheck && npm test` (Jest + jest-expo)
+- CI runs both suites on every push/PR (`.github/workflows/ci.yml`); `main` is protected by
+  the `protect-main` ruleset with both checks required.
+
+**Git policy:** Claude stages (`git add`) only — the designer runs `git commit` and `git push`
+from the host. Remote: github.com/andrit/battleapp.
+
+**EAS:** profiles in `app/eas.json` (development/preview/production, channels set);
+`expo-updates` installed with `runtimeVersion` policy `appVersion`. Builds require the
+designer's Expo account (`eas login`, then `eas init` to set the projectId and
+`eas update:configure` for the updates URL).
+
+**Task tracking:** every phase has a living task plan at
+`.workbench/designer/current/task-plan-phase-{N}.md` — statuses updated in place, dated
+progress log at the bottom. Read it at session start; update it as tasks move.
+
 ## Workbench Integration
 
 This project is registered with the AI Dev Workbench.
