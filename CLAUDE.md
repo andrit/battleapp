@@ -34,8 +34,12 @@ SDLC record is `docs/product-development/sdlc.md` (AI Service Layer builds at Ph
 in a **beta launch**, public launch after V2).
 
 **Dev loop:**
-- Server: `cd server && npm run dev` → http://localhost:4000 (`GET /health` to verify).
-  In-memory storage in Phase 1; Postgres arrives with the Phase 2 schema.
+- Server (host): `docker compose up --build game-server` at the workspace root →
+  http://localhost:4000 (`GET /health` to verify). **Do not run `npm run dev` on the host** —
+  `node_modules` is installed by the container (Linux binaries: esbuild etc.), so host-side
+  tsx fails with a platform-binary error. The compose build installs its own deps inside the
+  image; the container session uses `npm run dev` directly. In-memory storage in Phase 1;
+  Postgres arrives with the Phase 2 schema.
 - App: `cd app && npx expo start` (host-side; the container has no simulator). Point a
   simulator or Expo Go at it. `EXPO_PUBLIC_API_URL` sets the server base URL — `localhost:4000`
   for simulators, the dev machine's LAN IP for physical devices (see `app/.env.example`).
