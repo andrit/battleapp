@@ -1,0 +1,32 @@
+# BattleApp game stack — the portability artifact.
+# Requirement (tech-stack.md): the entire game and all dependencies lift onto any
+# production host by moving this file and its build contexts. V2 adds a valkey service
+# behind the Notifier seam (server/src/notify.ts).
+services:
+  game-server:
+    build: ./server
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgres://battleapp:battleapp@game-db:5432/battleapp
+    depends_on:
+      game-db:
+        condition: service_healthy
+
+  game-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: battleapp
+      POSTGRES_PASSWORD: battleapp
+      POSTGRES_DB: battleapp
+    volumes:
+      - game-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U battleapp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  game-db-data:

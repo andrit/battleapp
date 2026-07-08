@@ -1,0 +1,16 @@
+FROM node:22-alpine AS build
+WORKDIR /srv
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:22-alpine
+WORKDIR /srv
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=build /srv/dist ./dist
+EXPOSE 4000
+CMD ["node", "dist/index.js"]

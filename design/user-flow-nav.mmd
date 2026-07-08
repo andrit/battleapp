@@ -1,0 +1,72 @@
+%% BattleApp V1 — navigation map (Phase 0, 2026-07-07)
+%% Render: mmdc -i user-flow-nav.mmd -o user-flow-nav.svg
+flowchart TD
+
+  subgraph ENTRY["Entry points"]
+    LAUNCH["App launch"]
+    PUSH["Push notification"]
+    LINK["battleapp://story/:id<br/>https://&lt;domain&gt;/story/:id"]
+  end
+
+  subgraph AUTH["Auth (outside shell)"]
+    WELCOME["Welcome"]
+    SIGNUP["Sign Up"]
+    SIGNIN["Sign In"]
+    FIRST["First-story prompt"]
+  end
+
+  subgraph SHELL["Tab shell (signed in)"]
+    STORIES["Stories tab<br/>(badges when push off)"]
+    DISCOVER["Discover tab"]
+    PROFILE["Profile tab"]
+  end
+
+  subgraph STACK["Story stack (pushed/modal)"]
+    SETUP["New Story (modal)<br/>invite send — no settings"]
+    SETTINGS["Settings sheet (handshake)<br/>creator proposes · invitee confirms"]
+    ACCEPT["Invite Accept"]
+    STORY["Story View"]
+    COMPOSE["Compose (modal)"]
+    END["End screen"]
+    STALL["Stall choice dialog<br/>Extend / Abandon"]
+    REPORT["Report sheet"]
+    SETTINGS["Settings"]
+  end
+
+  GUESTWEB["Guest story view (web)<br/>read-only + store link"]
+
+  LAUNCH -->|no session| WELCOME
+  LAUNCH -->|session| STORIES
+  WELCOME --> SIGNUP --> FIRST
+  WELCOME --> SIGNIN --> STORIES
+  FIRST -->|start| SETUP
+  FIRST -->|browse| DISCOVER
+
+  STORIES -->|New story| SETUP
+  SETUP -->|lobby wait → activation| SETTINGS
+  SETTINGS -->|confirmed → compose opening| STORY
+  STORIES --> STORY
+  DISCOVER -->|spectate, read-only| STORY
+  PROFILE --> SETTINGS
+
+  PUSH -->|your turn| COMPOSE
+  PUSH -->|invite| ACCEPT
+  PUSH -->|confirm settings| SETTINGS
+  PUSH -->|reaction → Section| STORY
+  PUSH -->|fill-in warning| STORY
+  PUSH -->|complete| END
+
+  LINK -->|installed: resolve by viewer & state| STORY
+  LINK -->|invitee, story in lobby| ACCEPT
+  LINK -->|not installed| GUESTWEB
+  GUESTWEB -.->|react → sign-up gate| SIGNUP
+
+  ACCEPT -->|accept → activation| STORIES
+  ACCEPT -->|decline| STORIES
+
+  STORY -->|your turn| COMPOSE
+  COMPOSE -->|submit · moderation pass| STORY
+  COMPOSE -.->|reject: edit & resubmit| COMPOSE
+  STORY -->|turn limit / mutual end| END
+  STORY -.->|StoryStalled - pure-human| STALL
+  STORY -.->|Section overflow| REPORT
