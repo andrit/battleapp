@@ -6,6 +6,20 @@ on:
   pull_request:
 
 jobs:
+  domain-types-drift:
+    name: Domain types — mirror drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert app and server domain types are byte-identical
+        # server/src/domain/types.ts is canonical; app/src/domain/types.ts is a verbatim mirror.
+        # No shared package yet (two package roots) — this guards the mirror until one exists.
+        run: |
+          if ! diff -u server/src/domain/types.ts app/src/domain/types.ts; then
+            echo "::error::Domain types drifted. app/src/domain/types.ts must be a byte-identical mirror of server/src/domain/types.ts (server is canonical). Run: cp server/src/domain/types.ts app/src/domain/types.ts && recommit."
+            exit 1
+          fi
+
   server:
     name: Server — typecheck + tests
     runs-on: ubuntu-latest

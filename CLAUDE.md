@@ -63,6 +63,10 @@ designer's Expo account (`eas login`, then `eas init` to set the projectId and
 `.workbench/designer/current/task-plan-phase-{N}.md` — statuses updated in place, dated
 progress log at the bottom. Read it at session start; update it as tasks move.
 
+**Engineering conventions:** `docs/engineering/` holds durable how-and-why notes. Read
+`docs/engineering/domain-types-mirror.md` before editing `server/src/domain/types.ts` or its
+verbatim mirror `app/src/domain/types.ts` — edit both copies in the same change (CI `diff`s them).
+
 ## Workbench Integration
 
 This project is registered with the AI Dev Workbench.
