@@ -58,8 +58,8 @@ export interface Story {
   title: string | null; // nameable any time; V2 auto-title
   mode: StoryMode; // V1: 'freeform'
   elements: StoryElement[] | null; // V2 (structured); null in V1
-  turn_limit: number; // set in the Settings Handshake; locked at the opening Turn
-  pace_preset: PacePreset; // proposed by creator, confirmed by invitee; locked at opening Turn
+  turn_limit: number | null; // null until the Settings Handshake sets it; locked at opening Turn
+  pace_preset: PacePreset | null; // null until the Settings Handshake; locked at opening Turn
   state: StoryState;
   stalled_at: string | null; // set on a pure-human timeout; cleared by ExtendStory
   pure_human: boolean; // when true, AI Fill-in disabled; locked at the opening Turn

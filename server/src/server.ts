@@ -2,15 +2,21 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 
 import { createInProcessNotifier, type Notifier } from './notify.js';
-import { addTurn, createStory, getStory, listStories } from './store.js';
+import { createRepos, type Repos } from './repos/index.js';
 
 export interface BuildOptions {
   notifier?: Notifier;
+  repos?: Repos;
 }
 
 export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   const notifier = opts.notifier ?? createInProcessNotifier();
+  const repos = opts.repos ?? createRepos();
+
+  app.addHook('onClose', async () => {
+    await repos.close();
+  });
 
   await app.register(websocket);
 
@@ -21,31 +27,36 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   }));
 
   app.post('/stories', async (_req, reply) => {
-    const story = createStory();
+    // ponytail: creator is the dev bootstrap player until auth (Phase 4).
+    const creator = await repos.players.ensureDevPlayer();
+    const story = await repos.stories.create(creator.id);
     reply.code(201);
     return story;
   });
 
-  app.get('/stories', async () => ({ stories: listStories() }));
+  app.get('/stories', async () => ({ stories: await repos.stories.list() }));
 
   app.get<{ Params: { id: string } }>('/stories/:id', async (req, reply) => {
-    const story = getStory(req.params.id);
+    const story = await repos.stories.findById(req.params.id);
     if (!story) {
       reply.code(404);
       return { error: 'story_not_found' };
     }
-    return story;
+    const turns = await repos.turns.listByStory(story.id);
+    return { ...story, turns };
   });
 
   app.post<{ Params: { id: string }; Body: { content?: string } }>(
     '/stories/:id/turns',
     async (req, reply) => {
       const content = req.body?.content;
-      if (!content || typeof content !== 'string') {
+      if (typeof content !== 'string' || content.length < 1 || content.length > 500) {
         reply.code(400);
-        return { error: 'content_required' };
+        return { error: 'content_invalid' };
       }
-      const turn = addTurn(req.params.id, content);
+      // ponytail: author is the dev bootstrap player until auth (Phase 4).
+      const author = await repos.players.ensureDevPlayer();
+      const turn = await repos.turns.append(req.params.id, author.id, content);
       if (!turn) {
         reply.code(404);
         return { error: 'story_not_found' };

@@ -18,8 +18,8 @@ The central aggregate: an append-only sequence of Turns plus the settings that g
 | `title` | string \| null | nameable any time; **V2** auto-title |
 | `mode` | `'freeform'` \| `'structured'`(V2) \| `'roguelike'`(V2) | **V1: freeform only** |
 | `elements` | StoryElement[] \| null | **V2** (structured mode); null in V1 |
-| `turn_limit` | int | set in the **Settings Handshake**; locked at the opening Turn |
-| `pace_preset` | `'fast'` \| `'easy'` | governs the turn timer (fast 24h / easy 72h); proposed by the creator in the Settings Handshake (default preloaded), confirmed by the invitee; locked at the opening Turn |
+| `turn_limit` | int \| null | **null until** the Settings Handshake sets it (a lobby story is settings-free); locked at the opening Turn |
+| `pace_preset` | `'fast'` \| `'easy'` \| null | governs the turn timer (fast 24h / easy 72h); **null until** the Settings Handshake — proposed by the creator (default preloaded in the sheet), confirmed by the invitee; locked at the opening Turn |
 | `state` | `'lobby'` \| `'active'` \| `'complete'` \| `'abandoned'` | see state machine |
 | `stalled_at` | timestamp \| null | set on a pure-human timeout (paused); cleared by extend |
 | `pure_human` | boolean | when true, AI Fill-in is disabled; set in the Settings Handshake, locked at the opening Turn |

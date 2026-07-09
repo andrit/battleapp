@@ -1,21 +1,18 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
 import { buildServer } from '../server.js';
-import { resetStore } from '../store.js';
+import { createMemoryRepos } from '../repos/index.js';
 
+// Endpoint tests run against fresh in-memory repos each test (fast, isolated).
 let app: FastifyInstance;
 
-beforeAll(async () => {
-  app = await buildServer();
+beforeEach(async () => {
+  app = await buildServer({ repos: createMemoryRepos() });
 });
 
-afterAll(async () => {
+afterEach(async () => {
   await app.close();
-});
-
-beforeEach(() => {
-  resetStore();
 });
 
 describe('GET /health', () => {
@@ -26,15 +23,16 @@ describe('GET /health', () => {
   });
 });
 
-describe('stories stubs', () => {
-  it('creates a story in lobby state with no settings', async () => {
+describe('POST /stories', () => {
+  it('creates a settings-free lobby story', async () => {
     const res = await app.inject({ method: 'POST', url: '/stories' });
     expect(res.statusCode).toBe(201);
     const story = res.json();
     expect(story.state).toBe('lobby');
-    expect(story.turns).toEqual([]);
-    // Settings deferred to the Settings Handshake — creation carries none.
-    expect(story).not.toHaveProperty('pace_preset');
+    expect(story.turn_limit).toBeNull();
+    expect(story.pace_preset).toBeNull();
+    expect(story.settings_confirmed_at).toBeNull();
+    expect(story.participants).toHaveLength(1); // the creator
   });
 
   it('lists created stories', async () => {
@@ -51,7 +49,7 @@ describe('stories stubs', () => {
 });
 
 describe('POST /stories/:id/turns', () => {
-  it('appends a turn with a contiguous sequence number', async () => {
+  it('appends turns with contiguous sequence numbers, visible via GET', async () => {
     const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
     const res = await app.inject({
       method: 'POST',
@@ -76,7 +74,7 @@ describe('POST /stories/:id/turns', () => {
     expect(fetched.turns).toHaveLength(2);
   });
 
-  it('rejects empty content', async () => {
+  it('rejects empty content with 400', async () => {
     const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
     const res = await app.inject({
       method: 'POST',
@@ -84,6 +82,15 @@ describe('POST /stories/:id/turns', () => {
       payload: {},
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('404s when appending to a missing story', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/stories/nope/turns',
+      payload: { content: 'orphan' },
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
 
