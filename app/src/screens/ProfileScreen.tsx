@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useAuthStore } from '../state/authStore';
 
 export default function ProfileScreen() {
-  const displayName = useAuthStore((s) => s.displayName);
+  const displayName = useAuthStore((s) => s.player?.display_name ?? null);
 
   return (
     <View style={styles.container}>

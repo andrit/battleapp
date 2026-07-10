@@ -26,6 +26,9 @@
     },
     "updates": {
       "fallbackToCacheTimeout": 0
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
