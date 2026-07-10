@@ -2,6 +2,11 @@ import { render } from '@testing-library/react-native';
 
 import App from '../App';
 
+// App primes the offline stories cache from AsyncStorage on mount.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
 // The Stories tab calls /health on mount — keep the test hermetic.
 globalThis.fetch = jest.fn(() =>
   Promise.resolve({
