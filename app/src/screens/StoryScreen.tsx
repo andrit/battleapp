@@ -3,6 +3,7 @@ import { Button, FlatList, StyleSheet, Text, TextInput, View } from 'react-nativ
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useStory, useSubmitTurn } from '../lib/queries';
+import { useStoryWebSocket } from '../lib/storyWebSocket';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Story'>;
@@ -11,6 +12,7 @@ export default function StoryScreen({ route }: Props) {
   const { id } = route.params;
   const story = useStory(id);
   const submit = useSubmitTurn(id);
+  useStoryWebSocket(id); // live TurnAdded → patches the story cache
   const [draft, setDraft] = useState('');
 
   const turns = story.data?.turns ?? [];

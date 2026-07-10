@@ -11,7 +11,19 @@ jest.mock('../src/lib/api', () => ({
   // Plain subclass — parameter-properties trip babel's jest-hoist checker, and the test only
   // needs a rejectable error (the real ApiError's typed signature comes from the import).
   ApiError: class ApiError extends Error {},
+  BASE_URL: 'http://localhost:4000',
 }));
+
+// StoryScreen mounts useStoryWebSocket → new WebSocket(); these tests don't exercise WS, so a
+// no-op global keeps them focused (WS behavior is covered in storyWebSocket.test.tsx).
+class NoopWebSocket {
+  onopen: (() => void) | null = null;
+  onmessage: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  close = jest.fn();
+  constructor(_url: string) {}
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = NoopWebSocket;
 
 const mockApi = {
   getStory: api.getStory as jest.Mock,

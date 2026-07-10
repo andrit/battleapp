@@ -10,12 +10,19 @@
  */
 import { create } from 'zustand';
 
+export type WsStatus = 'idle' | 'connecting' | 'connected' | 'disconnected';
+
 interface StoryState {
   activeStoryId: string | null;
   setActiveStory: (id: string | null) => void;
+  /** WebSocket connection status for the active story (driven by useStoryWebSocket). */
+  wsStatus: WsStatus;
+  setWsStatus: (status: WsStatus) => void;
 }
 
 export const useStoryStore = create<StoryState>((set) => ({
   activeStoryId: null,
   setActiveStory: (id) => set({ activeStoryId: id }),
+  wsStatus: 'idle',
+  setWsStatus: (wsStatus) => set({ wsStatus }),
 }));
