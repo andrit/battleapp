@@ -37,6 +37,11 @@ isn't built in V1.
 - [ ] Story list ordering (your-turn first; status-visible rows)
 - [ ] Reactions per Section — the social fuel that makes writers feel seen; visibility and
       batched notifications (≤ 5 min) scale satisfaction
+- [ ] **Stories list filter (your-turn/active/completed) + sort (recently-active/longest-waiting/
+      alphabetical)** — client-side; usability scales as the list grows. **Phase 3 committed**
+      (`design/client-state-features.md`).
+- [ ] **Reading controls (font size / serif comfort)** — client-side; serif reading is the
+      product's texture, so this is real QoL + accessibility. **Phase 3 committed.**
 
 ## Delighters — unexpected; "it does that too?"
 
@@ -47,6 +52,9 @@ isn't built in V1.
 - [ ] **"AI compute used" transparency** — responsible-AI as a stated value (`product-story.md`)
 - [ ] Guest spectating via share link — universal links with rich previews; read-only web view
 - [ ] Mutual early exit — end a story gracefully together
+- [ ] **Client-state polish (Phase 9)** — reading-position memory, per-story pin/mute, theme
+      (light/dark)/reduced-motion/haptics, compose focus mode. Cheap client-only depth; persisted
+      via `usePreferencesStore` (Zustand + AsyncStorage). `design/client-state-features.md`.
 
 ## Indifferent — don't invest; minimal or deferred
 
@@ -77,6 +85,10 @@ enable multiple paid accounts (Stripe) and multi-instance scale (Valkey). See
 - [ ] Reject-and-retry UI → V2 (`Turn.supersedes` lineage already in the schema)
 - [ ] Real-time co-writing → V2
 - [ ] Story export (md) → V2 share artifact
+- [ ] **History search** (find an old story by the words written in its turns — the "Dragon
+      named Bob" scenario) → V2 — **server-side** Postgres full-text search (`tsvector` + GIN on
+      `turns`); a retention delighter that makes accumulated history valuable. Semantic (pgvector)
+      search is a later flourish. `design/client-state-features.md`.
 - [ ] Magic-link auth → V2
 - [ ] Monetization (Stripe / Pro tier, paid user profiles) → V2 — V1 beta is free; no paywall can sit inside the core loop; **public launch depends on this**
 - [ ] Valkey pub/sub (multi-instance WebSocket fan-out) → V2 — V1 runs a single game-server instance; the notify-layer seam exists (`tech-stack.md`)

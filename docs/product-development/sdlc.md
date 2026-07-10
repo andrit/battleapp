@@ -33,13 +33,13 @@ wrong and is corrected as follows** (per `game-mechanics.md` §0):
 | 1 | Scaffold | — |
 | 2 | Core Schema & State | Schema per `design/domain-model.md` — includes `settings_confirmed_at`, `summary`, `voice`, `supersedes`, `stalled_at` |
 | D | Design | AI-authored Sections need their distinct attributed visual treatment |
-| 3 | Core Game Screen | **AI Service Layer built here** (see amendment below) |
+| 3 | Core Game Screen | **AI Service Layer built here** (see amendment below). Also: committed client-state UX — stories list filter/sort + reading controls (`design/client-state-features.md`) |
 | 4 | Auth & Invitations | Gains the **Settings Handshake** surfaces (creator propose sheet, invitee confirm view) — `event-storm.md` decision #7 |
 | 5 | Offline & Drafts | B1/B2/B5 branches from `design/task-flow.md` |
 | 6 | Push Notifications & Turn Timer | **Consumes the layer**: fill-in warning push, **AI Fill-in**, stall path; rolling-summary maintenance wired here (first bounded-view consumer) |
 | 7 | **AI Director — hints on the existing layer** | **Consumes the layer** (see amendment below) |
 | 8 | Testing | Includes the cache-hit integration test (`ai-service-layer.md` §2) |
-| 9 | Polish | Kano Performance tier is the priority list (`design/kano.md`) |
+| 9 | Polish | Kano Performance tier is the priority list (`design/kano.md`). Client-state delighters: reading-position memory, pin/mute, theme/reduced-motion/haptics, focus mode (`design/client-state-features.md`) |
 | 10 | Extract | — |
 | 11 | QA Gate | — |
 | 12–16 | Support Audit, Support Automation, App Store, Monitoring, Go Live | App Store: Moderation Policy doc doubles as the UGC policy (still unwritten — tracked). **Go Live = beta launch** (beta testers only); the public store launch happens after V2 |
