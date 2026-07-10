@@ -1,23 +1,22 @@
-import { useEffect, useState } from 'react';
 import { Button, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { api } from '../lib/api';
+import { useHealth } from '../lib/queries';
 import { useStoryStore } from '../state/storyStore';
 import type { RootStackParamList } from '../navigation/types';
 
 export default function StoriesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [health, setHealth] = useState<string>('checking…');
+  const health = useHealth();
   const setActiveStory = useStoryStore((s) => s.setActiveStory);
 
-  useEffect(() => {
-    api
-      .health()
-      .then((h) => setHealth(`${h.service} ${h.version} — ${h.status}`))
-      .catch((err: unknown) => setHealth(`unreachable (${String(err)})`));
-  }, []);
+  const healthText = health.isPending
+    ? 'checking…'
+    : health.isError
+      ? `unreachable (${String(health.error)})`
+      : `${health.data.service} ${health.data.version} — ${health.data.status}`;
 
   const openPlaceholderStory = async () => {
     const story = await api.createStory();
@@ -29,7 +28,7 @@ export default function StoriesScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Stories</Text>
       <Text testID="server-health" style={styles.health}>
-        server: {health}
+        server: {healthText}
       </Text>
       <Button title="Open placeholder story" onPress={openPlaceholderStory} />
     </View>

@@ -1,8 +1,9 @@
 /**
- * Typed fetch wrapper for the game server.
- * Phase 1: stub shapes mirroring server/src/store.ts.
- * Phase 2 replaces the types with the real domain model and layers React Query on top.
+ * Typed fetch wrapper for the game server. Reconciled onto the real domain types
+ * (src/domain/types.ts) as of Phase 2 — no more Phase 1 stub shapes.
  */
+import type { Story, Turn } from '../domain/types';
+
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export class ApiError extends Error {
@@ -32,29 +33,16 @@ export interface HealthResponse {
   version: string;
 }
 
-export interface StubTurn {
-  id: string;
-  story_id: string;
-  content: string;
-  sequence_number: number;
-  author_type: 'human' | 'ai';
-  created_at: string;
-}
-
-export interface StubStory {
-  id: string;
-  state: 'lobby' | 'active' | 'complete' | 'abandoned';
-  turns: StubTurn[];
-  created_at: string;
-}
+/** GET /stories/:id returns a Story plus its Turns (the server composes this view). */
+export type StoryWithTurns = Story & { turns: Turn[] };
 
 export const api = {
   health: () => request<HealthResponse>('/health'),
-  createStory: () => request<StubStory>('/stories', { method: 'POST' }),
-  listStories: () => request<{ stories: StubStory[] }>('/stories'),
-  getStory: (id: string) => request<StubStory>(`/stories/${id}`),
+  createStory: () => request<Story>('/stories', { method: 'POST' }),
+  listStories: () => request<{ stories: Story[] }>('/stories'),
+  getStory: (id: string) => request<StoryWithTurns>(`/stories/${id}`),
   submitTurn: (id: string, content: string) =>
-    request<StubTurn>(`/stories/${id}/turns`, {
+    request<Turn>(`/stories/${id}/turns`, {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),

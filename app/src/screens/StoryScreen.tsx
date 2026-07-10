@@ -1,39 +1,39 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { api, type StubStory } from '../lib/api';
+import { useStory, useSubmitTurn } from '../lib/queries';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Story'>;
 
 export default function StoryScreen({ route }: Props) {
   const { id } = route.params;
-  const [story, setStory] = useState<StubStory | null>(null);
+  const story = useStory(id);
+  const submit = useSubmitTurn(id);
   const [draft, setDraft] = useState('');
 
-  const refresh = useCallback(() => {
-    api.getStory(id).then(setStory).catch(console.warn);
-  }, [id]);
+  const turns = story.data?.turns ?? [];
+  const meta = story.data
+    ? `state: ${story.data.state} · turns: ${turns.length}`
+    : story.isError
+      ? 'failed to load'
+      : 'loading…';
 
-  useEffect(refresh, [refresh]);
-
-  const submit = async () => {
-    if (!draft.trim()) return;
-    await api.submitTurn(id, draft.trim());
-    setDraft('');
-    refresh();
+  const onSubmit = () => {
+    const text = draft.trim();
+    if (!text) return;
+    // Clear the draft only on success — on error (B5) it stays for retry.
+    submit.mutate(text, { onSuccess: () => setDraft('') });
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Story (placeholder)</Text>
-      <Text style={styles.meta}>
-        {story ? `state: ${story.state} · turns: ${story.turns.length}` : 'loading…'}
-      </Text>
+      <Text style={styles.meta}>{meta}</Text>
       <FlatList
         style={styles.scroll}
-        data={story?.turns ?? []}
+        data={turns}
         keyExtractor={(t) => t.id}
         renderItem={({ item }) => (
           <View style={styles.turn}>
@@ -45,6 +45,9 @@ export default function StoryScreen({ route }: Props) {
         )}
         ListEmptyComponent={<Text style={styles.hint}>No turns yet — write the first one.</Text>}
       />
+      {submit.isError && (
+        <Text style={styles.error}>{"Couldn't send — tap Submit to retry."}</Text>
+      )}
       <TextInput
         testID="turn-input"
         style={styles.input}
@@ -53,7 +56,7 @@ export default function StoryScreen({ route }: Props) {
         placeholder="Write a turn (stub)…"
         multiline
       />
-      <Button title="Submit turn" onPress={submit} />
+      <Button title="Submit turn" onPress={onSubmit} />
     </View>
   );
 }
@@ -67,5 +70,6 @@ const styles = StyleSheet.create({
   turnMeta: { fontSize: 12, color: '#888' },
   turnContent: { fontSize: 16 },
   hint: { fontSize: 14, color: '#555', paddingVertical: 16 },
+  error: { fontSize: 13, color: '#b00020' },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, minHeight: 60 },
 });
