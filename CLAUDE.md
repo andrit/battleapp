@@ -38,8 +38,10 @@ in a **beta launch**, public launch after V2).
   http://localhost:4000 (`GET /health` to verify). **Do not run `npm run dev` on the host** —
   `node_modules` is installed by the container (Linux binaries: esbuild etc.), so host-side
   tsx fails with a platform-binary error. The compose build installs its own deps inside the
-  image; the container session uses `npm run dev` directly. In-memory storage in Phase 1;
-  Postgres arrives with the Phase 2 schema.
+  image; the container session uses `npm run dev` directly. **The server auto-runs pending
+  migrations on startup when `DATABASE_URL` is set** (idempotent), so the compose stack is
+  turnkey — no separate migrate step (the prod image has no tsx for the `npm run migrate` CLI,
+  which is for host/dev use). In-memory storage when `DATABASE_URL` is unset; Postgres otherwise.
 - App: `cd app && npx expo start` (host-side; the container has no simulator). Point a
   simulator or Expo Go at it. `EXPO_PUBLIC_API_URL` sets the server base URL — `localhost:4000`
   for simulators, the dev machine's LAN IP for physical devices (see `app/.env.example`).
