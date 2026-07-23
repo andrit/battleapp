@@ -153,4 +153,21 @@ describe('ComposeScreen', () => {
     await waitFor(() => expect(view.queryByTestId('director-hint')).toBeNull());
     expect(analytics.directorHintDismissed).toHaveBeenCalledWith('s1');
   });
+
+  it('the hint appearing then dismissing leaves the draft undisturbed and still editable', async () => {
+    mockApi.directorHint.mockResolvedValue({ hint: 'Raise the stakes.' });
+    const view = await renderWithClient(<ComposeScreen {...makeProps()} />);
+    const user = userEvent.setup();
+
+    await user.type(view.getByTestId('turn-input'), 'The captain lit a lantern');
+    await view.findByTestId('director-hint'); // hint arrives mid-compose
+    expect(view.getByTestId('turn-input').props.value).toBe('The captain lit a lantern');
+
+    await user.press(view.getByTestId('dismiss-hint'));
+    await waitFor(() => expect(view.queryByTestId('director-hint')).toBeNull());
+    // Draft survived the hint show + dismiss, and the input is still editable (no focus disruption).
+    expect(view.getByTestId('turn-input').props.value).toBe('The captain lit a lantern');
+    await user.type(view.getByTestId('turn-input'), ' twice');
+    expect(view.getByTestId('turn-input').props.value).toBe('The captain lit a lantern twice');
+  });
 });
