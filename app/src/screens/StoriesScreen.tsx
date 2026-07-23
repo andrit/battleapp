@@ -7,8 +7,8 @@
  * Two data gaps carried from Task 4 shape the cards: the list payload has no author display names
  * ("Partner" until server enrichment) and no per-story turn count (we show whose-turn + limit).
  */
-import { useCallback } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCreateStory, useStories } from '../lib/queries';
 import { useAuthStore } from '../state/authStore';
+import {
+  usePreferencesStore,
+  type ListFilter,
+  type ListSort,
+} from '../state/preferencesStore';
 import {
   color,
   fabSize,
@@ -25,7 +30,7 @@ import {
   type,
   minTapTarget,
 } from '../theme/tokens';
-import type { Story, StoryState } from '../domain/types';
+import type { Story } from '../domain/types';
 import type { RootStackParamList } from '../navigation/types';
 
 const FALLBACK_ME = 'me'; // until Phase 5 wires identity (same placeholder as StoryScreen)
@@ -57,14 +62,54 @@ const PILL: Record<Bucket, { label: string; style: { bg: string; text: string } 
   abandoned: { label: 'abandoned', style: statusPill.abandoned },
 };
 
-/** Stable your-turn-first ordering; within a bucket, most-recent activity first. */
-function groupStories(stories: Story[], meId: string): Story[] {
+/**
+ * Your-turn-first ordering, then the reader's within-bucket sort (client-state-ux.md §A). Grouping
+ * is intentionally kept even under sort — the your-turn-first structure is the product's core.
+ */
+function groupStories(stories: Story[], meId: string, sort: ListSort): Story[] {
   const activityAt = (s: Story) => Date.parse(s.activated_at ?? s.created_at) || 0;
+  const within = (a: Story, b: Story) => {
+    switch (sort) {
+      case 'longest-waiting':
+        return activityAt(a) - activityAt(b); // oldest activity first
+      case 'az':
+        return (a.title ?? 'Untitled').localeCompare(b.title ?? 'Untitled');
+      case 'recent':
+      default:
+        return activityAt(b) - activityAt(a);
+    }
+  };
   return [...stories].sort((a, b) => {
     const rank = BUCKET_ORDER.indexOf(bucketFor(a, meId)) - BUCKET_ORDER.indexOf(bucketFor(b, meId));
-    return rank !== 0 ? rank : activityAt(b) - activityAt(a);
+    return rank !== 0 ? rank : within(a, b);
   });
 }
+
+function matchesFilter(s: Story, filter: ListFilter, meId: string): boolean {
+  switch (filter) {
+    case 'your-turn':
+      return bucketFor(s, meId) === 'yourTurn';
+    case 'active':
+      return s.state === 'active';
+    case 'completed':
+      return s.state === 'complete';
+    case 'all':
+    default:
+      return true;
+  }
+}
+
+const FILTERS: { key: ListFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'your-turn', label: 'Your turn' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+];
+const SORTS: { key: ListSort; label: string }[] = [
+  { key: 'recent', label: 'Recently active' },
+  { key: 'longest-waiting', label: 'Longest waiting' },
+  { key: 'az', label: 'A–Z' },
+];
 
 export default function StoriesScreen() {
   const navigation = useNavigation<Nav>();
@@ -72,6 +117,10 @@ export default function StoriesScreen() {
   const stories = useStories();
   const create = useCreateStory();
   const meId = useAuthStore((s) => s.player?.id) ?? FALLBACK_ME;
+  const { filter, sort } = usePreferencesStore((s) => s.list);
+  const setFilter = usePreferencesStore((s) => s.setFilter);
+  const setSort = usePreferencesStore((s) => s.setSort);
+  const [sortOpen, setSortOpen] = useState(false);
 
   const onStart = useCallback(() => {
     create.mutate(undefined, {
@@ -79,16 +128,21 @@ export default function StoriesScreen() {
     });
   }, [create, navigation]);
 
-  const data = stories.data?.stories;
+  const raw = stories.data?.stories;
 
   // Loading with no cache → skeleton (never a bare spinner for a list screen).
-  if (!data) {
+  if (!raw) {
     if (stories.isLoading) return <StoriesSkeleton />;
     return <StoriesError onRetry={() => void stories.refetch()} />;
   }
 
   const offline = stories.isError; // stale cache shown after a failed refetch
-  const grouped = groupStories(data, meId);
+  const firstRun = raw.length === 0;
+  const visible = groupStories(
+    raw.filter((s) => matchesFilter(s, filter, meId)),
+    meId,
+    sort,
+  );
   const fabBottom = Math.max(insets.bottom, space[4]) + space[2];
 
   return (
@@ -99,22 +153,34 @@ export default function StoriesScreen() {
         </View>
       )}
 
-      {grouped.length === 0 ? (
+      {firstRun ? (
         <FirstRunEmpty onStart={onStart} pending={create.isPending} />
       ) : (
-        <FlashList
-          testID="stories-list"
-          data={grouped}
-          keyExtractor={(s) => s.id}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <StoryCard
-              story={item}
-              meId={meId}
-              onPress={() => navigation.navigate('Story', { id: item.id })}
+        <>
+          <ControlRow
+            filter={filter}
+            onFilter={setFilter}
+            sort={sort}
+            onOpenSort={() => setSortOpen(true)}
+          />
+          {visible.length === 0 ? (
+            <FilteredEmpty filter={filter} onShowAll={() => setFilter('all')} />
+          ) : (
+            <FlashList
+              testID="stories-list"
+              data={visible}
+              keyExtractor={(s) => s.id}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => (
+                <StoryCard
+                  story={item}
+                  meId={meId}
+                  onPress={() => navigation.navigate('Story', { id: item.id })}
+                />
+              )}
             />
           )}
-        />
+        </>
       )}
 
       <Pressable
@@ -126,6 +192,116 @@ export default function StoriesScreen() {
         style={[styles.fab, { bottom: fabBottom }]}
       >
         <Text style={styles.fabPlus}>+</Text>
+      </Pressable>
+
+      <SortSheet
+        visible={sortOpen}
+        sort={sort}
+        onPick={(s) => {
+          setSort(s);
+          setSortOpen(false);
+        }}
+        onClose={() => setSortOpen(false)}
+      />
+    </View>
+  );
+}
+
+// --- Controls: filter chips + sort ----------------------------------------------
+
+function ControlRow({
+  filter,
+  onFilter,
+  sort,
+  onOpenSort,
+}: {
+  filter: ListFilter;
+  onFilter: (f: ListFilter) => void;
+  sort: ListSort;
+  onOpenSort: () => void;
+}) {
+  const sortLabel = SORTS.find((s) => s.key === sort)?.label ?? '';
+  return (
+    <View style={styles.controlRow}>
+      <View style={styles.chips}>
+        {FILTERS.map((f) => {
+          const on = f.key === filter;
+          return (
+            <Pressable
+              key={f.key}
+              testID={`filter-${f.key}`}
+              onPress={() => onFilter(f.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              style={[styles.chip, on && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Pressable
+        testID="sort-button"
+        onPress={onOpenSort}
+        accessibilityRole="button"
+        accessibilityLabel={`Sort: ${sortLabel}`}
+        style={styles.sortButton}
+      >
+        <Text style={styles.sortText}>⇅</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function SortSheet({
+  visible,
+  sort,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  sort: ListSort;
+  onPick: (s: ListSort) => void;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable testID="sort-scrim" style={styles.scrim} onPress={onClose} />
+      <View style={[styles.sortSheet, { paddingBottom: Math.max(insets.bottom, space[4]) }]}>
+        <Text style={styles.sheetHeading}>Sort</Text>
+        {SORTS.map((s) => (
+          <Pressable
+            key={s.key}
+            testID={`sort-${s.key}`}
+            onPress={() => onPick(s.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: s.key === sort }}
+            style={styles.sortOption}
+          >
+            <Text style={[styles.sortOptionText, s.key === sort && styles.sortOptionOn]}>
+              {s.label}
+            </Text>
+            {s.key === sort && <Text style={styles.sortCheck}>✓</Text>}
+          </Pressable>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+function FilteredEmpty({ filter, onShowAll }: { filter: ListFilter; onShowAll: () => void }) {
+  const label = FILTERS.find((f) => f.key === filter)?.label ?? 'these';
+  return (
+    <View testID="stories-filtered-empty" style={[styles.screen, styles.centered]}>
+      <Text style={styles.emptySub}>No {label.toLowerCase()} stories yet.</Text>
+      <Pressable
+        testID="show-all"
+        onPress={onShowAll}
+        accessibilityRole="button"
+        style={styles.secondaryCta}
+      >
+        <Text style={styles.secondaryCtaText}>Show all</Text>
       </Pressable>
     </View>
   );
@@ -292,6 +468,66 @@ const styles = StyleSheet.create({
     backgroundColor: color.primary,
   },
   ctaText: { ...type.label, color: color.primaryInk },
+  secondaryCta: {
+    marginTop: space[3],
+    minHeight: minTapTarget,
+    justifyContent: 'center',
+    paddingHorizontal: space[5],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  secondaryCtaText: { ...type.label, color: color.ink700 },
+
+  // Filter chips + sort control row
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[3],
+  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[2], flexShrink: 1 },
+  chip: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: space[3],
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.surface,
+  },
+  chipOn: { backgroundColor: color.primaryTint, borderColor: color.primaryTint },
+  chipText: { ...type.label, color: color.ink500 },
+  chipTextOn: { color: color.primary },
+  sortButton: {
+    minWidth: minTapTarget,
+    minHeight: minTapTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+  },
+  sortText: { fontSize: 20, color: color.ink700 },
+
+  // Sort sheet
+  scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.16)' },
+  sortSheet: {
+    backgroundColor: color.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: space[5],
+    gap: space[1],
+  },
+  sheetHeading: { ...type.title, color: color.ink900, marginBottom: space[2] },
+  sortOption: {
+    minHeight: minTapTarget,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sortOptionText: { ...type.body, color: color.ink700 },
+  sortOptionOn: { color: color.primary, fontWeight: '600' },
+  sortCheck: { ...type.label, color: color.primary },
 
   // Skeleton
   skelBar: { borderRadius: radius.sm, backgroundColor: color.line },

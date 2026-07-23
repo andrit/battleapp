@@ -27,15 +27,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useDirectorHint, useStory, useSubmitTurn } from '../lib/queries';
-import {
-  color,
-  paper as paperTokens,
-  defaultPaper,
-  radius,
-  space,
-  type,
-  minTapTarget,
-} from '../theme/tokens';
+import { usePreferencesStore } from '../state/preferencesStore';
+import { paperColor } from '../theme/reading';
+import { color, radius, space, type, minTapTarget } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Compose'>;
@@ -51,7 +45,7 @@ export default function ComposeScreen({ route, navigation }: Props) {
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
 
-  const paper = defaultPaper; // Task 7 wires the reading-controls paper choice
+  const paper = usePreferencesStore((s) => s.reading.paper);
   const [draft, setDraft] = useState('');
   const [hintDismissed, setHintDismissed] = useState(false);
   const [posted, setPosted] = useState(false);
@@ -92,7 +86,7 @@ export default function ComposeScreen({ route, navigation }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
     >
-      <View style={[styles.body, { backgroundColor: paperTokens[paper] }]}>
+      <View style={[styles.body, { backgroundColor: paperColor(paper) }]}>
         {lastTurn && (
           <Text style={[type.story, styles.context]} numberOfLines={3}>
             {lastTurn.content}

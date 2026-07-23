@@ -10,3 +10,9 @@ require('react-native-reanimated').setUpTests();
 jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
+
+// usePreferencesStore persists via AsyncStorage; the official mock makes the persist middleware
+// (and any component that reads it) work in every test without per-file wiring.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);

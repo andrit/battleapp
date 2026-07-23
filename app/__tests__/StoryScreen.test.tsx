@@ -66,7 +66,7 @@ const makeStory = (overrides: Partial<StoryWithTurns> = {}): StoryWithTurns => (
 
 const props = {
   route: { key: 'story', name: 'Story', params: { id: 's1' } },
-  navigation: { navigate: jest.fn() },
+  navigation: { navigate: jest.fn(), setOptions: jest.fn() },
 } as unknown as Parameters<typeof StoryScreen>[0];
 
 function renderWithClient(ui: ReactElement) {
@@ -150,7 +150,7 @@ describe('StoryScreen (Story View)', () => {
   it('navigates to Compose from the your-turn bar', async () => {
     mockGetStory.mockResolvedValue(makeStory({ turns: [makeTurn('x', 1, 'me')] }));
     const navigate = jest.fn();
-    const localProps = { ...props, navigation: { navigate } } as unknown as typeof props;
+    const localProps = { ...props, navigation: { navigate, setOptions: jest.fn() } } as unknown as typeof props;
     const screen = await renderWithClient(<StoryScreen {...localProps} />);
     const bar = await screen.findByTestId('your-turn-bar');
     await userEvent.press(bar);

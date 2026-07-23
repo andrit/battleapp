@@ -9,6 +9,7 @@
  * complete / abandoned footer. Live turns arrive via useStoryWebSocket; optimistic reconcile
  * lives in useSubmitTurn.
  */
+import { useLayoutEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,16 +18,11 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useStory } from '../lib/queries';
 import { useStoryWebSocket } from '../lib/storyWebSocket';
 import { useAuthStore } from '../state/authStore';
+import { usePreferencesStore } from '../state/preferencesStore';
 import { StorySection } from '../components/StorySection';
-import {
-  color,
-  paper as paperTokens,
-  defaultPaper,
-  radius,
-  space,
-  type,
-  minTapTarget,
-} from '../theme/tokens';
+import { ReadingControlsSheet } from '../components/ReadingControlsSheet';
+import { paperColor } from '../theme/reading';
+import { color, radius, space, type, minTapTarget } from '../theme/tokens';
 import type { Story, Turn } from '../domain/types';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -41,7 +37,25 @@ export default function StoryScreen({ route, navigation }: Props) {
   const story = useStory(id);
   useStoryWebSocket(id); // live TurnAdded → patches the story cache
   const meId = useAuthStore((s) => s.player?.id) ?? FALLBACK_ME;
-  const paper = defaultPaper; // Task 7 wires the reading-controls paper choice
+  const paper = usePreferencesStore((s) => s.reading.paper);
+  const [readingOpen, setReadingOpen] = useState(false);
+
+  // The "Aa" header button opens the reading-controls sheet (client-state-ux.md §B).
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          testID="reading-controls-button"
+          onPress={() => setReadingOpen(true)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Reading controls"
+        >
+          <Text style={styles.aaButton}>Aa</Text>
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   const data = story.data;
 
@@ -65,6 +79,7 @@ export default function StoryScreen({ route, navigation }: Props) {
       )}
       <StoryBody data={data} meId={meId} paper={paper} onOpenCompose={openToCompose} />
       <BottomBar data={data} meId={meId} onOpenCompose={openToCompose} />
+      <ReadingControlsSheet visible={readingOpen} onClose={() => setReadingOpen(false)} />
     </View>
   );
 }
@@ -79,10 +94,10 @@ function StoryBody({
 }: {
   data: Story & { turns: Turn[] };
   meId: string;
-  paper: typeof defaultPaper;
+  paper: ReturnType<typeof usePreferencesStore.getState>['reading']['paper'];
   onOpenCompose: () => void;
 }) {
-  const paperBg = { backgroundColor: paperTokens[paper] };
+  const paperBg = { backgroundColor: paperColor(paper) };
 
   if (data.state === 'lobby' && data.turns.length === 0) {
     // Opener writes the opening line; the creator opens (created_by). Otherwise: waiting.
@@ -127,7 +142,6 @@ function StoryBody({
           turn={item}
           authorName={authorLabel(item.author_id, meId)}
           authorSlot={authorSlot(data, item.author_id)}
-          paper={paper}
           // Entrance is applied to live/optimistic appends in Task 5, not on the whole list —
           // animating recycled rows would flicker on scroll.
           animateEntrance={false}
@@ -250,6 +264,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   offlineText: { ...type.caption, color: color.ink700 },
+  aaButton: { ...type.heading, color: color.primary, paddingHorizontal: space[2] },
 
   // Empty (lobby) + error
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space[2], padding: space[6] },

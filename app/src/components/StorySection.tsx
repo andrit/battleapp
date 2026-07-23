@@ -16,16 +16,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import type { Turn } from '../domain/types';
-import {
-  color,
-  paper as paperTokens,
-  defaultPaper,
-  radius,
-  space,
-  type,
-  minTapTarget,
-  type PaperChoice,
-} from '../theme/tokens';
+import { color, radius, space, type, minTapTarget } from '../theme/tokens';
+import { paperColor, readingStoryStyle } from '../theme/reading';
+import { usePreferencesStore } from '../state/preferencesStore';
 
 export interface StorySectionProps {
   turn: Turn;
@@ -33,10 +26,6 @@ export interface StorySectionProps {
   authorName: string;
   /** Which of the two author colors this human turn uses. Ignored for AI turns. */
   authorSlot: 'a' | 'b';
-  /** Reader's chosen paper — sets the human-section background only. */
-  paper?: PaperChoice;
-  /** Reading-control size bump: 'story' (default) or 'storyLg'. */
-  size?: 'story' | 'storyLg';
   reactionCount?: number;
   reacted?: boolean;
   /** When provided, the reaction affordance renders (parent owns the state). */
@@ -49,15 +38,17 @@ function StorySectionComponent({
   turn,
   authorName,
   authorSlot,
-  paper = defaultPaper,
-  size = 'story',
   reactionCount = 0,
   reacted = false,
   onToggleReaction,
   animateEntrance = true,
 }: StorySectionProps) {
   const isAI = turn.author_type === 'ai';
-  const storyType = size === 'storyLg' ? type.storyLg : type.story;
+  // Global reading prefs (client-state-ux.md): serif size/comfort + paper apply live to every
+  // Section. The AI tint below deliberately does NOT follow the paper choice.
+  const reading = usePreferencesStore((s) => s.reading);
+  const storyType = readingStoryStyle(reading);
+  const paperBg = paperColor(reading.paper);
   const entering = animateEntrance ? FadeInDown.springify().damping(18) : undefined;
 
   const reaction =
@@ -93,7 +84,7 @@ function StorySectionComponent({
     <Animated.View
       testID="story-section"
       entering={entering}
-      style={[styles.humanSection, { backgroundColor: paperTokens[paper] }]}
+      style={[styles.humanSection, { backgroundColor: paperBg }]}
     >
       <View style={styles.authorChip}>
         <View style={[styles.authorDot, { backgroundColor: authorColor(authorSlot) }]} />

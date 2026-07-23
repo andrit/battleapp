@@ -5,6 +5,7 @@ import type { ReactElement } from 'react';
 import StoriesScreen from '../src/screens/StoriesScreen';
 import { api, ApiError, type StoryWithTurns } from '../src/lib/api';
 import { useAuthStore } from '../src/state/authStore';
+import { usePreferencesStore } from '../src/state/preferencesStore';
 import type { Story, StoryState } from '../src/domain/types';
 
 jest.mock('../src/lib/api', () => ({
@@ -58,6 +59,10 @@ beforeEach(() => {
   mockApi.listStories.mockReset();
   mockApi.createStory.mockReset();
   useAuthStore.setState({ token: null, player: null, status: 'anon' }); // FALLBACK_ME = 'me'
+  usePreferencesStore.setState({
+    list: { filter: 'all', sort: 'recent' },
+    reading: { fontStep: 1, comfort: false, paper: 'warm' },
+  });
 });
 
 describe('StoriesScreen', () => {
@@ -107,5 +112,36 @@ describe('StoriesScreen', () => {
 
     await userEvent.press(screen.getByTestId('start-story-fab'));
     expect(mockNavigate).toHaveBeenCalledWith('Story', { id: 'new-1' });
+  });
+
+  it('filters the list to completed stories when the Completed chip is selected', async () => {
+    mockApi.listStories.mockResolvedValue({
+      stories: [
+        makeStory('mine', { current_author_id: 'me' }),
+        makeStory('done', { state: 'complete', current_author_id: null }),
+      ],
+    });
+    const screen = await renderWithClient(<StoriesScreen />);
+    await screen.findByTestId('stories-list');
+    expect(screen.getByText('Story mine')).toBeTruthy();
+
+    await userEvent.press(screen.getByTestId('filter-completed'));
+    expect(screen.getByText('Story done')).toBeTruthy();
+    expect(screen.queryByText('Story mine')).toBeNull();
+  });
+
+  it('shows the filtered-empty state (not first-run) and Show all resets the filter', async () => {
+    mockApi.listStories.mockResolvedValue({
+      stories: [makeStory('mine', { current_author_id: 'me' })], // no completed stories
+    });
+    const screen = await renderWithClient(<StoriesScreen />);
+    await screen.findByTestId('stories-list');
+
+    await userEvent.press(screen.getByTestId('filter-completed'));
+    expect(screen.getByTestId('stories-filtered-empty')).toBeTruthy();
+    expect(screen.queryByTestId('stories-empty')).toBeNull(); // distinct from first-run
+
+    await userEvent.press(screen.getByTestId('show-all'));
+    expect(await screen.findByTestId('stories-list')).toBeTruthy();
   });
 });
