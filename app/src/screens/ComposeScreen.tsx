@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useDirectorHint, useStory, useSubmitTurn } from '../lib/queries';
+import { analytics } from '../lib/analytics';
 import { usePreferencesStore } from '../state/preferencesStore';
 import { paperColor } from '../theme/reading';
 import { color, radius, space, type, minTapTarget } from '../theme/tokens';
@@ -67,10 +68,25 @@ export default function ComposeScreen({ route, navigation }: Props) {
   const lastTurn = story.data?.turns.at(-1) ?? null;
   const hintText = !hintDismissed ? (hint.data?.hint ?? null) : null;
 
+  // Fire director_hint_viewed once, the first time a hint is actually shown.
+  const hintTracked = useRef(false);
+  useEffect(() => {
+    if (hintText && !hintTracked.current) {
+      hintTracked.current = true;
+      analytics.directorHintViewed(id);
+    }
+  }, [hintText, id]);
+
+  const onDismissHint = useCallback(() => {
+    setHintDismissed(true);
+    analytics.directorHintDismissed(id);
+  }, [id]);
+
   const onSubmit = useCallback(() => {
     if (!canSubmit) return;
     submit.mutate(trimmed, {
       onSuccess: () => {
+        analytics.turnSubmitted(id);
         // Coral acknowledgement (screen-states: "the human acted"), then close back to Story View.
         setPosted(true);
         setDraft('');
@@ -78,7 +94,7 @@ export default function ComposeScreen({ route, navigation }: Props) {
       },
       // Error path is B5: useSubmitTurn rolls the optimistic Section back; the draft stays here.
     });
-  }, [canSubmit, submit, trimmed, navigation]);
+  }, [canSubmit, submit, trimmed, id, navigation]);
 
   return (
     <KeyboardAvoidingView
@@ -103,7 +119,7 @@ export default function ComposeScreen({ route, navigation }: Props) {
               <Text style={styles.hintLabel}>{`◆ Hint`}</Text>
               <Pressable
                 testID="dismiss-hint"
-                onPress={() => setHintDismissed(true)}
+                onPress={onDismissHint}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss hint"

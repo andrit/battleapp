@@ -15,6 +15,15 @@ jest.mock('../src/lib/api', () => ({
 // ComposeScreen calls useHeaderHeight() (needs a navigation header context we don't mount here).
 jest.mock('@react-navigation/elements', () => ({ useHeaderHeight: () => 0 }));
 
+jest.mock('../src/lib/analytics', () => ({
+  analytics: {
+    turnSubmitted: jest.fn(),
+    directorHintViewed: jest.fn(),
+    directorHintDismissed: jest.fn(),
+  },
+}));
+import { analytics } from '../src/lib/analytics';
+
 const mockApi = {
   getStory: api.getStory as jest.Mock,
   submitTurn: api.submitTurn as jest.Mock,
@@ -74,6 +83,9 @@ beforeEach(() => {
   mockApi.getStory.mockResolvedValue(makeStory([makeTurn('The ferry left before dawn.', 1)]));
   mockApi.submitTurn.mockReset();
   mockApi.directorHint.mockResolvedValue({ hint: null });
+  (analytics.turnSubmitted as jest.Mock).mockReset();
+  (analytics.directorHintViewed as jest.Mock).mockReset();
+  (analytics.directorHintDismissed as jest.Mock).mockReset();
 });
 
 describe('ComposeScreen', () => {
@@ -104,6 +116,7 @@ describe('ComposeScreen', () => {
 
     await waitFor(() => expect(view.getByTestId('posted-ack')).toBeTruthy());
     expect(view.getByTestId('turn-input').props.value).toBe(''); // draft cleared on success
+    expect(analytics.turnSubmitted).toHaveBeenCalledWith('s1');
     await waitFor(() => expect(goBack).toHaveBeenCalled(), { timeout: 2000 });
   });
 
@@ -133,9 +146,11 @@ describe('ComposeScreen', () => {
 
     expect(await view.findByTestId('director-hint')).toBeTruthy();
     expect(view.getByText('What does the ferry want in return?')).toBeTruthy();
+    await waitFor(() => expect(analytics.directorHintViewed).toHaveBeenCalledWith('s1'));
 
     const user = userEvent.setup();
     await user.press(view.getByTestId('dismiss-hint'));
     await waitFor(() => expect(view.queryByTestId('director-hint')).toBeNull());
+    expect(analytics.directorHintDismissed).toHaveBeenCalledWith('s1');
   });
 });

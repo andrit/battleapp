@@ -20,6 +20,9 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
+jest.mock('../src/lib/analytics', () => ({ analytics: { storyStarted: jest.fn() } }));
+import { analytics } from '../src/lib/analytics';
+
 const mockApi = {
   listStories: api.listStories as jest.Mock,
   createStory: api.createStory as jest.Mock,
@@ -112,6 +115,7 @@ describe('StoriesScreen', () => {
 
     await userEvent.press(screen.getByTestId('start-story-fab'));
     expect(mockNavigate).toHaveBeenCalledWith('Story', { id: 'new-1' });
+    expect(analytics.storyStarted).toHaveBeenCalledWith('new-1');
   });
 
   it('filters the list to completed stories when the Completed chip is selected', async () => {

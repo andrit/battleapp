@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCreateStory, useStories } from '../lib/queries';
+import { analytics } from '../lib/analytics';
 import { useAuthStore } from '../state/authStore';
 import {
   usePreferencesStore,
@@ -124,7 +125,10 @@ export default function StoriesScreen() {
 
   const onStart = useCallback(() => {
     create.mutate(undefined, {
-      onSuccess: (story) => navigation.navigate('Story', { id: story.id }),
+      onSuccess: (story) => {
+        analytics.storyStarted(story.id);
+        navigation.navigate('Story', { id: story.id });
+      },
     });
   }, [create, navigation]);
 
