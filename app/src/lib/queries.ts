@@ -18,6 +18,17 @@ export function useStories() {
   return useQuery({ queryKey: keys.stories, queryFn: api.listStories });
 }
 
+/** Create a settings-free lobby story (the Start Story FAB); refreshes the list on success. */
+export function useCreateStory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.createStory(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.stories });
+    },
+  });
+}
+
 export function useStory(id: string) {
   return useQuery({ queryKey: keys.story(id), queryFn: () => api.getStory(id) });
 }

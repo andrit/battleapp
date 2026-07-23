@@ -7,20 +7,19 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-// The Stories tab calls /health on mount — keep the test hermetic.
+// The Stories tab lists stories on mount — return an empty list so the tab shell renders the
+// first-run empty state, keeping the test hermetic.
 globalThis.fetch = jest.fn(() =>
   Promise.resolve({
     ok: true,
     status: 200,
-    json: () =>
-      Promise.resolve({ status: 'ok', service: 'battleapp-server', version: '0.1.0' }),
+    json: () => Promise.resolve({ stories: [] }),
   }),
 ) as unknown as typeof fetch;
 
 describe('App', () => {
-  it('renders the tab shell with Stories focused', async () => {
+  it('renders the tab shell with the Stories tab focused', async () => {
     const screen = await render(<App />);
-    expect(await screen.findByText('server: battleapp-server 0.1.0 — ok')).toBeTruthy();
-    expect(screen.getByText('Open placeholder story')).toBeTruthy();
+    expect(await screen.findByText('No stories yet')).toBeTruthy();
   });
 });
