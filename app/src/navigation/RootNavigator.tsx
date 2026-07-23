@@ -6,6 +6,7 @@ import StoriesScreen from '../screens/StoriesScreen';
 import DiscoverScreen from '../screens/DiscoverScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import StoryScreen from '../screens/StoryScreen';
+import ComposeScreen from '../screens/ComposeScreen';
 import type { RootStackParamList, TabsParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -27,6 +28,11 @@ export default function RootNavigator() {
       <Stack.Navigator>
         <Stack.Screen name="Tabs" component={TabsNavigator} options={{ headerShown: false }} />
         <Stack.Screen name="Story" component={StoryScreen} options={{ title: 'Story' }} />
+        <Stack.Screen
+          name="Compose"
+          component={ComposeScreen}
+          options={{ presentation: 'modal', title: 'Your turn' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
