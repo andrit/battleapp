@@ -39,6 +39,11 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return story;
   });
 
+  // Dev identity bootstrap (Phase 5 replaces this with real auth). The app calls /me on start so
+  // client identity matches the server's dev player — otherwise whose-turn and author attribution
+  // never line up (the client would guess a placeholder id the server has never heard of).
+  app.get('/me', async () => repos.players.ensureDevPlayer());
+
   app.get('/stories', async () => ({ stories: await repos.stories.list() }));
 
   app.get<{ Params: { id: string } }>('/stories/:id', async (req, reply) => {
@@ -79,6 +84,9 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         reply.code(404);
         return { error: 'story_not_found' };
       }
+      // Dev single-player loop (Phase 5+ brings real turn alternation): activate the story on its
+      // first turn and keep it the dev player's turn so the loop continues without a partner.
+      await repos.stories.setActiveAuthor(req.params.id, author.id);
       notifier.publish(req.params.id, { type: 'TurnAdded', payload: turn });
       reply.code(201);
       return turn;

@@ -7,13 +7,16 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-// The Stories tab lists stories on mount — return an empty list so the tab shell renders the
-// first-run empty state, keeping the test hermetic.
-globalThis.fetch = jest.fn(() =>
+// On mount the app fetches /me (dev identity) and lists /stories. Return an empty list so the tab
+// shell renders the first-run empty state, and a dev player for /me — keeping the test hermetic.
+globalThis.fetch = jest.fn((url: string) =>
   Promise.resolve({
     ok: true,
     status: 200,
-    json: () => Promise.resolve({ stories: [] }),
+    json: () =>
+      Promise.resolve(
+        String(url).includes('/me') ? { id: 'dev', display_name: 'dev' } : { stories: [] },
+      ),
   }),
 ) as unknown as typeof fetch;
 

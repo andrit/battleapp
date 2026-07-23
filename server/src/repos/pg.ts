@@ -126,6 +126,16 @@ class PgStoryRepo implements StoryRepo {
     }
     return rows.map((r) => mapStory(r, byStory.get(r.id) ?? []));
   }
+
+  async setActiveAuthor(storyId: string, authorId: string): Promise<void> {
+    if (!isUuid(storyId)) return;
+    await this.sql`
+      UPDATE stories
+      SET state = 'active',
+          activated_at = COALESCE(activated_at, now()),
+          current_author_id = ${authorId}
+      WHERE id = ${storyId}`;
+  }
 }
 
 class PgTurnRepo implements TurnRepo {

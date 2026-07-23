@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, type StoryWithTurns } from './api';
+import { useAuthStore } from '../state/authStore';
 import type { Turn } from '../domain/types';
 
 export const keys = {
@@ -68,7 +69,7 @@ export function useSubmitTurn(storyId: string) {
         const optimistic: Turn = {
           id: `optimistic-${Date.now()}`,
           story_id: storyId,
-          author_id: 'me',
+          author_id: useAuthStore.getState().player?.id ?? 'me',
           author_type: 'human',
           content,
           sequence_number: previous.turns.length + 1,

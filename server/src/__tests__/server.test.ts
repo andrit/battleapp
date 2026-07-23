@@ -23,6 +23,17 @@ describe('GET /health', () => {
   });
 });
 
+describe('GET /me', () => {
+  it('returns a stable dev player (bootstrap identity)', async () => {
+    const first = await app.inject({ method: 'GET', url: '/me' });
+    expect(first.statusCode).toBe(200);
+    expect(typeof first.json().id).toBe('string');
+    // Idempotent: the same dev player each call.
+    const second = await app.inject({ method: 'GET', url: '/me' });
+    expect(second.json().id).toBe(first.json().id);
+  });
+});
+
 describe('POST /stories', () => {
   it('creates a settings-free lobby story', async () => {
     const res = await app.inject({ method: 'POST', url: '/stories' });
@@ -72,6 +83,20 @@ describe('POST /stories/:id/turns', () => {
 
     const fetched = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
     expect(fetched.turns).toHaveLength(2);
+  });
+
+  it('activates a lobby story on its first turn and marks it the author’s turn (dev loop)', async () => {
+    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    expect(story.state).toBe('lobby');
+    await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      payload: { content: 'The opening line.' },
+    });
+    const after = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
+    expect(after.state).toBe('active');
+    expect(after.current_author_id).toBe(story.created_by); // the dev player
+    expect(after.activated_at).not.toBeNull();
   });
 
   it('rejects empty content with 400', async () => {

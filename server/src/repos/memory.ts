@@ -63,6 +63,14 @@ class MemoryStoryRepo implements StoryRepo {
   async list(): Promise<Story[]> {
     return [...this.byId.values()];
   }
+
+  async setActiveAuthor(storyId: string, authorId: string): Promise<void> {
+    const story = this.byId.get(storyId);
+    if (!story) return;
+    story.state = 'active';
+    story.activated_at ??= now();
+    story.current_author_id = authorId;
+  }
 }
 
 class MemoryTurnRepo implements TurnRepo {

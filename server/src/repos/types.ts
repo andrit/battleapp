@@ -19,6 +19,12 @@ export interface StoryRepo {
   create(createdBy: string): Promise<Story>;
   findById(id: string): Promise<Story | null>;
   list(): Promise<Story[]>;
+  /**
+   * Dev single-player loop until real turn-flow (Phase 5+): activate a lobby story on its first
+   * turn and mark `authorId` as the current author. With one dev player this keeps it "your turn"
+   * so the loop continues without a second player. No-op if the story is missing.
+   */
+  setActiveAuthor(storyId: string, authorId: string): Promise<void>;
 }
 
 export interface TurnRepo {

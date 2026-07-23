@@ -38,6 +38,8 @@ export type StoryWithTurns = Story & { turns: Turn[] };
 
 export const api = {
   health: () => request<HealthResponse>('/health'),
+  /** Dev identity bootstrap until Phase 5 auth — who the server thinks "me" is. */
+  me: () => request<{ id: string; display_name: string }>('/me'),
   createStory: () => request<Story>('/stories', { method: 'POST' }),
   listStories: () => request<{ stories: Story[] }>('/stories'),
   getStory: (id: string) => request<StoryWithTurns>(`/stories/${id}`),

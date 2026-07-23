@@ -8,6 +8,8 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { createQueryClient } from './src/lib/queryClient';
 import { primeStoriesCache, subscribeStoriesWriteThrough } from './src/lib/storiesCache';
 import { useAppFonts } from './src/theme/fonts';
+import { api } from './src/lib/api';
+import { useAuthStore } from './src/state/authStore';
 
 const queryClient = createQueryClient();
 
@@ -21,6 +23,13 @@ export default function App() {
   useEffect(() => {
     // Offline B2: seed the stories list from AsyncStorage, then keep the mirror current.
     void primeStoriesCache(queryClient);
+    // Dev identity bootstrap until Phase 5 auth: learn who "me" is so whose-turn and author
+    // attribution match the server's dev player. Best-effort — screens fall back to the 'me'
+    // placeholder if it fails.
+    void api
+      .me()
+      .then((player) => useAuthStore.setState({ player }))
+      .catch(() => {});
     return subscribeStoriesWriteThrough(queryClient);
   }, []);
 
