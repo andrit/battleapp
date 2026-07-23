@@ -7,6 +7,7 @@ export const keys = {
   health: ['health'] as const,
   stories: ['stories'] as const,
   story: (id: string) => ['story', id] as const,
+  directorHint: (id: string) => ['directorHint', id] as const,
 };
 
 export function useHealth() {
@@ -19,6 +20,21 @@ export function useStories() {
 
 export function useStory(id: string) {
   return useQuery({ queryKey: keys.story(id), queryFn: () => api.getStory(id) });
+}
+
+/**
+ * One-shot director-hint fetch for the Compose surface. Stall-gated + ≤1 per stalled turn on the
+ * server, so a single fetch on open is right — no refetch/retry (a missing hint is never an error).
+ */
+export function useDirectorHint(storyId: string) {
+  return useQuery({
+    queryKey: keys.directorHint(storyId),
+    queryFn: () => api.directorHint(storyId),
+    retry: false,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  });
 }
 
 interface OptimisticContext {

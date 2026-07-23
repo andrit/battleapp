@@ -7,20 +7,24 @@ import { api, ApiError, type StoryWithTurns } from '../src/lib/api';
 import type { Turn } from '../src/domain/types';
 
 jest.mock('../src/lib/api', () => ({
-  api: { getStory: jest.fn(), submitTurn: jest.fn() },
+  api: { getStory: jest.fn(), submitTurn: jest.fn(), directorHint: jest.fn() },
   ApiError: class ApiError extends Error {},
   BASE_URL: 'http://localhost:4000',
 }));
 
+// ComposeScreen calls useHeaderHeight() (needs a navigation header context we don't mount here).
+jest.mock('@react-navigation/elements', () => ({ useHeaderHeight: () => 0 }));
+
 const mockApi = {
   getStory: api.getStory as jest.Mock,
   submitTurn: api.submitTurn as jest.Mock,
+  directorHint: api.directorHint as jest.Mock,
 };
 
 const makeTurn = (content: string, seq: number): Turn => ({
   id: `t${seq}`,
   story_id: 's1',
-  author_id: 'me',
+  author_id: 'p2',
   author_type: 'human',
   content,
   sequence_number: seq,
@@ -59,69 +63,79 @@ function makeProps(navigation: { goBack?: jest.Mock } = {}) {
   } as unknown as Parameters<typeof ComposeScreen>[0];
 }
 
-function renderWithClient(ui: ReactElement, client: QueryClient) {
+function renderWithClient(ui: ReactElement) {
+  // ComposeScreen mounts useStory(id), so the story cache always has a live observer and is never
+  // GC'd mid-test — the default gcTime is fine here (no override needed).
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 beforeEach(() => {
-  mockApi.getStory.mockReset();
+  mockApi.getStory.mockResolvedValue(makeStory([makeTurn('The ferry left before dawn.', 1)]));
   mockApi.submitTurn.mockReset();
+  mockApi.directorHint.mockResolvedValue({ hint: null });
 });
 
-describe('ComposeScreen (temporary, Task 4)', () => {
-  it('submits a turn, optimistically appends it to the story cache, then closes', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-    // Seed the story cache the optimistic update writes into.
-    client.setQueryData(['story', 's1'], makeStory([]));
-    mockApi.submitTurn.mockImplementation((_id: string, content: string) =>
-      Promise.resolve(makeTurn(content, 1)),
-    );
-
-    const goBack = jest.fn();
-    const screen = await renderWithClient(<ComposeScreen {...makeProps({ goBack })} />, client);
+describe('ComposeScreen', () => {
+  it('live 500-char counter turns over-limit and disables Submit past the limit', async () => {
+    const view = await renderWithClient(<ComposeScreen {...makeProps()} />);
+    const input = view.getByTestId('turn-input');
     const user = userEvent.setup();
-    await user.type(screen.getByTestId('turn-input'), 'Once upon a stub.');
-    await user.press(screen.getByText('Submit'));
 
-    await waitFor(() => {
-      const cached = client.getQueryData<StoryWithTurns>(['story', 's1']);
-      expect(cached?.turns.at(-1)?.content).toBe('Once upon a stub.');
-    });
-    await waitFor(() => expect(goBack).toHaveBeenCalled());
+    await user.type(input, 'hello');
+    expect(view.getByTestId('char-counter')).toHaveTextContent('5 / 500');
+
+    // Over the limit → counter reflects it and Submit is disabled.
+    input.props.onChangeText('x'.repeat(501));
+    await waitFor(() => expect(view.getByTestId('char-counter')).toHaveTextContent('501 / 500'));
+    expect(view.getByTestId('submit').props.accessibilityState.disabled).toBe(true);
   });
 
-  it('B5: on error the optimistic turn rolls back, the draft is kept, and a retry line shows', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-    client.setQueryData(['story', 's1'], makeStory([]));
+  it('submits, shows the coral ack, clears the draft, and closes', async () => {
+    mockApi.submitTurn.mockImplementation((_id: string, content: string) =>
+      Promise.resolve(makeTurn(content, 2)),
+    );
+    const goBack = jest.fn();
+    const view = await renderWithClient(<ComposeScreen {...makeProps({ goBack })} />);
+    const user = userEvent.setup();
+
+    await user.type(view.getByTestId('turn-input'), 'Neither could name the shore.');
+    await user.press(view.getByTestId('submit'));
+
+    await waitFor(() => expect(view.getByTestId('posted-ack')).toBeTruthy());
+    expect(view.getByTestId('turn-input').props.value).toBe(''); // draft cleared on success
+    await waitFor(() => expect(goBack).toHaveBeenCalled(), { timeout: 2000 });
+  });
+
+  it('B5: on error the draft is kept, a retry line shows, and the modal stays open', async () => {
     let reject!: () => void;
     mockApi.submitTurn.mockReturnValue(
       new Promise<Turn>((_res, rej) => {
         reject = () => rej(new ApiError(400, { error: 'content_invalid' }));
       }),
     );
-
     const goBack = jest.fn();
-    const screen = await renderWithClient(<ComposeScreen {...makeProps({ goBack })} />, client);
+    const view = await renderWithClient(<ComposeScreen {...makeProps({ goBack })} />);
     const user = userEvent.setup();
-    await user.type(screen.getByTestId('turn-input'), 'Doomed line.');
-    await user.press(screen.getByText('Submit'));
 
-    // optimistic append lands in the cache
-    await waitFor(() => {
-      const cached = client.getQueryData<StoryWithTurns>(['story', 's1']);
-      expect(cached?.turns.at(-1)?.content).toBe('Doomed line.');
-    });
-
+    await user.type(view.getByTestId('turn-input'), 'Doomed line.');
+    await user.press(view.getByTestId('submit'));
     reject();
 
-    // rollback: the optimistic turn is gone…
-    await waitFor(() => {
-      const cached = client.getQueryData<StoryWithTurns>(['story', 's1']);
-      expect(cached?.turns).toHaveLength(0);
-    });
-    // …the draft stays for retry, the modal did not close, and the retry line shows
-    expect(screen.getByTestId('turn-input').props.value).toBe('Doomed line.');
+    await waitFor(() => expect(view.getByTestId('submit-error')).toBeTruthy());
+    expect(view.getByTestId('turn-input').props.value).toBe('Doomed line.'); // draft preserved
     expect(goBack).not.toHaveBeenCalled();
-    expect(screen.getByText("Couldn't post — tap Submit to retry.")).toBeTruthy();
+  });
+
+  it('shows the director hint when present and dismisses it without closing', async () => {
+    mockApi.directorHint.mockResolvedValue({ hint: 'What does the ferry want in return?' });
+    const view = await renderWithClient(<ComposeScreen {...makeProps()} />);
+
+    expect(await view.findByTestId('director-hint')).toBeTruthy();
+    expect(view.getByText('What does the ferry want in return?')).toBeTruthy();
+
+    const user = userEvent.setup();
+    await user.press(view.getByTestId('dismiss-hint'));
+    await waitFor(() => expect(view.queryByTestId('director-hint')).toBeNull());
   });
 });

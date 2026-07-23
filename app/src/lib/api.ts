@@ -41,6 +41,8 @@ export const api = {
   createStory: () => request<Story>('/stories', { method: 'POST' }),
   listStories: () => request<{ stories: Story[] }>('/stories'),
   getStory: (id: string) => request<StoryWithTurns>(`/stories/${id}`),
+  /** Stall-gated director hint; `hint` is null when none applies (never an error). */
+  directorHint: (id: string) => request<{ hint: string | null }>(`/stories/${id}/director-hint`),
   submitTurn: (id: string, content: string) =>
     request<Turn>(`/stories/${id}/turns`, {
       method: 'POST',
