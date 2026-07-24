@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Player, Story, Turn } from '../domain/types.js';
-import type { PlayerRepo, Repos, StoryRepo, TurnRepo } from './types.js';
+import type { AuthRepo, PlayerRepo, Repos, StoryRepo, TurnRepo } from './types.js';
 
 const now = (): string => new Date().toISOString();
+
+/** A generated, unique-enough placeholder handle; the user renames it at first sign-in (Task 3). */
+const genDisplayName = (): string => `player_${randomUUID().slice(0, 8)}`;
 
 class MemoryPlayerRepo implements PlayerRepo {
   private byId = new Map<string, Player>();
@@ -25,6 +28,53 @@ class MemoryPlayerRepo implements PlayerRepo {
 
   async findById(id: string): Promise<Player | null> {
     return this.byId.get(id) ?? null;
+  }
+
+  /** Create + store a Player (used by the auth repo when a new OIDC identity signs in). */
+  create(displayName: string): Player {
+    const player: Player = {
+      id: randomUUID(),
+      display_name: displayName,
+      avatar: null,
+      stats: { stories_played: 0, stories_completed: 0 },
+      created_at: now(),
+    };
+    this.byId.set(player.id, player);
+    return player;
+  }
+}
+
+class MemoryAuthRepo implements AuthRepo {
+  private identities = new Map<string, string>(); // `${provider}:${subject}` → playerId
+  private refresh = new Map<string, { playerId: string; expiresAt: string }>();
+
+  constructor(private readonly players: MemoryPlayerRepo) {}
+
+  private key(provider: string, subject: string): string {
+    return `${provider}:${subject}`;
+  }
+
+  async findOrCreatePlayer(provider: string, subject: string): Promise<Player> {
+    const existing = this.identities.get(this.key(provider, subject));
+    if (existing) {
+      const player = await this.players.findById(existing);
+      if (player) return player;
+    }
+    const player = this.players.create(genDisplayName());
+    this.identities.set(this.key(provider, subject), player.id);
+    return player;
+  }
+
+  async storeRefreshToken(hash: string, playerId: string, expiresAt: string): Promise<void> {
+    this.refresh.set(hash, { playerId, expiresAt });
+  }
+
+  async findRefreshToken(hash: string): Promise<{ playerId: string; expiresAt: string } | null> {
+    return this.refresh.get(hash) ?? null;
+  }
+
+  async deleteRefreshToken(hash: string): Promise<void> {
+    this.refresh.delete(hash);
   }
 }
 
@@ -106,10 +156,12 @@ export function createMemoryRepos(): Repos {
   const players = new MemoryPlayerRepo();
   const stories = new MemoryStoryRepo();
   const turns = new MemoryTurnRepo(stories);
+  const auth = new MemoryAuthRepo(players);
   return {
     players,
     stories,
     turns,
+    auth,
     async close() {},
   };
 }

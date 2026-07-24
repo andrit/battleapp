@@ -5,11 +5,21 @@ import { createInProcessNotifier, type Notifier } from './notify.js';
 import { createRepos, type Repos } from './repos/index.js';
 import { createAiService, type AiService } from './ai/service.js';
 import { boundedViewFor, HintLedger, isTurnStalled } from './ai/director.js';
+import { createRemoteOidcConfig, isProvider, verifyIdToken, type OidcConfig } from './auth/oidc.js';
+import {
+  createRefreshToken,
+  hashRefreshToken,
+  issueAccessToken,
+  verifyAccessToken,
+} from './auth/tokens.js';
+import type { Player } from './domain/types.js';
 
 export interface BuildOptions {
   notifier?: Notifier;
   repos?: Repos;
   ai?: AiService;
+  /** OIDC verification config; defaults to the remote (Apple/Google) JWKS. Tests inject a local one. */
+  oidc?: OidcConfig;
 }
 
 export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInstance> {
@@ -17,7 +27,18 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   const notifier = opts.notifier ?? createInProcessNotifier();
   const repos = opts.repos ?? createRepos();
   const ai = opts.ai ?? (await createAiService());
+  const oidc = opts.oidc ?? createRemoteOidcConfig();
   const hintLedger = new HintLedger();
+
+  // Resolve the authed Player from a Bearer access token; null if absent/invalid.
+  const authedPlayer = async (authHeader: string | undefined): Promise<Player | null> => {
+    if (!authHeader?.startsWith('Bearer ')) return null;
+    try {
+      return await repos.players.findById(await verifyAccessToken(authHeader.slice(7)));
+    } catch {
+      return null;
+    }
+  };
 
   app.addHook('onClose', async () => {
     await repos.close();
@@ -39,10 +60,71 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return story;
   });
 
-  // Dev identity bootstrap (Phase 5 replaces this with real auth). The app calls /me on start so
-  // client identity matches the server's dev player — otherwise whose-turn and author attribution
-  // never line up (the client would guess a placeholder id the server has never heard of).
-  app.get('/me', async () => repos.players.ensureDevPlayer());
+  // POST /auth/oidc — verify a provider id_token, upsert the player, issue our access + refresh.
+  app.post<{ Body: { provider?: string; id_token?: string } }>(
+    '/auth/oidc',
+    async (req, reply) => {
+      const { provider, id_token } = req.body ?? {};
+      if (!isProvider(provider) || typeof id_token !== 'string') {
+        reply.code(400);
+        return { error: 'invalid_request' };
+      }
+      let claims;
+      try {
+        claims = await verifyIdToken(provider, id_token, oidc);
+      } catch {
+        reply.code(401);
+        return { error: 'invalid_id_token' };
+      }
+      const player = await repos.auth.findOrCreatePlayer(claims.provider, claims.subject);
+      const refresh = createRefreshToken();
+      await repos.auth.storeRefreshToken(refresh.hash, player.id, refresh.expiresAt);
+      reply.code(201);
+      return { access_token: await issueAccessToken(player.id), refresh_token: refresh.token, player };
+    },
+  );
+
+  // POST /auth/refresh — single-use rotation: validate the refresh token, issue a new pair.
+  app.post<{ Body: { refresh_token?: string } }>('/auth/refresh', async (req, reply) => {
+    const token = req.body?.refresh_token;
+    if (typeof token !== 'string') {
+      reply.code(400);
+      return { error: 'invalid_request' };
+    }
+    const hash = hashRefreshToken(token);
+    const found = await repos.auth.findRefreshToken(hash);
+    if (!found || Date.parse(found.expiresAt) <= Date.now()) {
+      if (found) await repos.auth.deleteRefreshToken(hash); // reap expired
+      reply.code(401);
+      return { error: 'invalid_refresh_token' };
+    }
+    await repos.auth.deleteRefreshToken(hash); // rotate: the presented token is now spent
+    const refresh = createRefreshToken();
+    await repos.auth.storeRefreshToken(refresh.hash, found.playerId, refresh.expiresAt);
+    return { access_token: await issueAccessToken(found.playerId), refresh_token: refresh.token };
+  });
+
+  // POST /auth/signout — revoke a refresh token (idempotent).
+  app.post<{ Body: { refresh_token?: string } }>('/auth/signout', async (req, reply) => {
+    const token = req.body?.refresh_token;
+    if (typeof token === 'string') await repos.auth.deleteRefreshToken(hashRefreshToken(token));
+    reply.code(204);
+    return null;
+  });
+
+  // GET /me — the authed player when a Bearer token is present; otherwise the dev bootstrap.
+  // The dev fallback is TRANSITIONAL (retired in Task 5, once the client always authenticates).
+  app.get('/me', async (req, reply) => {
+    if (req.headers.authorization) {
+      const player = await authedPlayer(req.headers.authorization);
+      if (!player) {
+        reply.code(401);
+        return { error: 'unauthorized' };
+      }
+      return player;
+    }
+    return repos.players.ensureDevPlayer();
+  });
 
   app.get('/stories', async () => ({ stories: await repos.stories.list() }));
 

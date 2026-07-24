@@ -33,9 +33,25 @@ export interface TurnRepo {
   listByStory(storyId: string): Promise<Turn[]>;
 }
 
+export interface AuthRepo {
+  /**
+   * Resolve the Player for an OIDC identity `(provider, subject)` — returning the linked player if
+   * the identity is known, else creating a new Player (with a generated unique display_name that
+   * the user renames at first sign-in) and linking it. Idempotent per identity.
+   */
+  findOrCreatePlayer(provider: string, subject: string): Promise<Player>;
+  /** Persist a refresh token by its hash, with an expiry. */
+  storeRefreshToken(hash: string, playerId: string, expiresAt: string): Promise<void>;
+  /** Look up a stored refresh token by hash (does not check expiry — caller does). */
+  findRefreshToken(hash: string): Promise<{ playerId: string; expiresAt: string } | null>;
+  /** Delete a refresh token (rotation on refresh, or revoke on sign-out). */
+  deleteRefreshToken(hash: string): Promise<void>;
+}
+
 export interface Repos {
   players: PlayerRepo;
   stories: StoryRepo;
   turns: TurnRepo;
+  auth: AuthRepo;
   close(): Promise<void>;
 }

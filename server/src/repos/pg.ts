@@ -1,9 +1,14 @@
+import { randomUUID } from 'node:crypto';
+
 import type { Participant, Player, Story, Turn } from '../domain/types.js';
 import { createDb, type Sql } from '../db/client.js';
-import type { PlayerRepo, Repos, StoryRepo, TurnRepo } from './types.js';
+import type { AuthRepo, PlayerRepo, Repos, StoryRepo, TurnRepo } from './types.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s: string): boolean => UUID_RE.test(s);
+
+/** A generated, unique-enough placeholder handle; the user renames it at first sign-in (Task 3). */
+const genDisplayName = (): string => `player_${randomUUID().slice(0, 8)}`;
 
 // timestamptz comes back from the driver as a Date; the domain uses ISO strings.
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -164,12 +169,49 @@ class PgTurnRepo implements TurnRepo {
   }
 }
 
+class PgAuthRepo implements AuthRepo {
+  constructor(private readonly sql: Sql) {}
+
+  async findOrCreatePlayer(provider: string, subject: string): Promise<Player> {
+    const [existing] = await this.sql`
+      SELECT p.* FROM auth_identities i
+      JOIN players p ON p.id = i.player_id
+      WHERE i.provider = ${provider} AND i.subject = ${subject}`;
+    if (existing) return mapPlayer(existing);
+    return this.sql.begin(async (tx) => {
+      const [player] = await tx`
+        INSERT INTO players (display_name) VALUES (${genDisplayName()}) RETURNING *`;
+      await tx`
+        INSERT INTO auth_identities (provider, subject, player_id)
+        VALUES (${provider}, ${subject}, ${player.id})`;
+      return mapPlayer(player);
+    });
+  }
+
+  async storeRefreshToken(hash: string, playerId: string, expiresAt: string): Promise<void> {
+    await this.sql`
+      INSERT INTO refresh_tokens (token_hash, player_id, expires_at)
+      VALUES (${hash}, ${playerId}, ${expiresAt})`;
+  }
+
+  async findRefreshToken(hash: string): Promise<{ playerId: string; expiresAt: string } | null> {
+    const [row] = await this.sql`
+      SELECT player_id, expires_at FROM refresh_tokens WHERE token_hash = ${hash}`;
+    return row ? { playerId: row.player_id, expiresAt: isoReq(row.expires_at) } : null;
+  }
+
+  async deleteRefreshToken(hash: string): Promise<void> {
+    await this.sql`DELETE FROM refresh_tokens WHERE token_hash = ${hash}`;
+  }
+}
+
 export function createPgRepos(url: string): Repos {
   const sql = createDb(url);
   return {
     players: new PgPlayerRepo(sql),
     stories: new PgStoryRepo(sql),
     turns: new PgTurnRepo(sql),
+    auth: new PgAuthRepo(sql),
     async close() {
       await sql.end();
     },
