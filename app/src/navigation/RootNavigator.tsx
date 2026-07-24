@@ -7,6 +7,10 @@ import DiscoverScreen from '../screens/DiscoverScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import StoryScreen from '../screens/StoryScreen';
 import ComposeScreen from '../screens/ComposeScreen';
+import SplashScreen from '../screens/SplashScreen';
+import WelcomeScreen from '../screens/auth/WelcomeScreen';
+import HandlePickScreen from '../screens/auth/HandlePickScreen';
+import { needsHandle, useAuthStore } from '../state/authStore';
 import type { RootStackParamList, TabsParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -22,17 +26,39 @@ function TabsNavigator() {
   );
 }
 
+/**
+ * The auth gate. `authStore.status` (+ whether the player still needs a handle) decides which set of
+ * screens exists — React Navigation resets automatically as that state changes:
+ *   loading → Splash · not authed → Welcome · authed & needs handle → HandlePick · else → the app.
+ */
 export default function RootNavigator() {
+  const status = useAuthStore((s) => s.status);
+  const player = useAuthStore((s) => s.player);
+
   return (
     <NavigationContainer>
       <Stack.Navigator>
-        <Stack.Screen name="Tabs" component={TabsNavigator} options={{ headerShown: false }} />
-        <Stack.Screen name="Story" component={StoryScreen} options={{ title: 'Story' }} />
-        <Stack.Screen
-          name="Compose"
-          component={ComposeScreen}
-          options={{ presentation: 'modal', title: 'Your turn' }}
-        />
+        {status === 'loading' ? (
+          <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
+        ) : status !== 'authed' ? (
+          <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
+        ) : player && needsHandle(player) ? (
+          <Stack.Screen
+            name="HandlePick"
+            component={HandlePickScreen}
+            options={{ headerShown: false }}
+          />
+        ) : (
+          <Stack.Group>
+            <Stack.Screen name="Tabs" component={TabsNavigator} options={{ headerShown: false }} />
+            <Stack.Screen name="Story" component={StoryScreen} options={{ title: 'Story' }} />
+            <Stack.Screen
+              name="Compose"
+              component={ComposeScreen}
+              options={{ presentation: 'modal', title: 'Your turn' }}
+            />
+          </Stack.Group>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

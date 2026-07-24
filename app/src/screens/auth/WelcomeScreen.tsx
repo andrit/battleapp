@@ -15,35 +15,37 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { needsHandle, useAuthStore } from '../../state/authStore';
+import { useAuthStore } from '../../state/authStore';
 import { OAuthNotConfiguredError, type Provider } from '../../lib/oauth';
 import { color, fontFamily, radius, space, type, minTapTarget } from '../../theme/tokens';
-import type { AuthStackParamList } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'Welcome'>;
+// Brand-entrance timing — the staged reveal (wordmark → tagline → sign-in options). Delays are ms
+// after the screen mounts. To swap elements (e.g. a real logo) or retune, edit these and see
+// docs/engineering/welcome-animation.md.
+const ENTRANCE = { wordmark: 0, tagline: 260, actions: 620 } as const;
+const REDUCED_FADE_MS = 150; // reduced-motion fallback: a plain fade, no movement/stagger
 
-export default function WelcomeScreen({ navigation }: Props) {
+// Routing is handled by the auth gate (RootNavigator) reacting to authStore state — this screen just
+// kicks off sign-in.
+export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
-  const [busy, setBusy] = useState<Provider | null>(null);
+  const signInAsDev = useAuthStore((s) => s.signInAsDev);
+  const [busy, setBusy] = useState<Provider | 'dev' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   // Staged entrance: wordmark → tagline → sign-in options. Reduced motion collapses to a soft fade.
   const enter = (delay: number) =>
-    reduced ? FadeIn.duration(150) : FadeInDown.springify().damping(20).delay(delay);
+    reduced ? FadeIn.duration(REDUCED_FADE_MS) : FadeInDown.springify().damping(20).delay(delay);
 
   const onContinue = useCallback(
     async (provider: Provider) => {
       setMessage(null);
       setBusy(provider);
       try {
-        await signInWithProvider(provider);
-        const player = useAuthStore.getState().player;
-        // New account → pick a handle first; returning users are handed to the app by the gate.
-        if (player && needsHandle(player)) navigation.navigate('HandlePick');
+        await signInWithProvider(provider); // gate routes on the resulting authStore change
       } catch (err) {
         setMessage(
           err instanceof OAuthNotConfiguredError
@@ -54,21 +56,33 @@ export default function WelcomeScreen({ navigation }: Props) {
         setBusy(null);
       }
     },
-    [signInWithProvider, navigation],
+    [signInWithProvider],
   );
+
+  const onDev = useCallback(async () => {
+    setMessage(null);
+    setBusy('dev');
+    try {
+      await signInAsDev();
+    } catch {
+      setMessage('Couldn’t reach the dev server.');
+    } finally {
+      setBusy(null);
+    }
+  }, [signInAsDev]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.hero}>
-        <Animated.Text entering={enter(0)} style={styles.wordmark}>
+        <Animated.Text entering={enter(ENTRANCE.wordmark)} style={styles.wordmark}>
           battleapp
         </Animated.Text>
-        <Animated.Text entering={enter(reduced ? 0 : 260)} style={styles.tagline}>
+        <Animated.Text entering={enter(reduced ? 0 : ENTRANCE.tagline)} style={styles.tagline}>
           Build a story with a friend, one line at a time.
         </Animated.Text>
       </View>
 
-      <Animated.View entering={enter(reduced ? 0 : 620)} style={styles.actions}>
+      <Animated.View entering={enter(reduced ? 0 : ENTRANCE.actions)} style={styles.actions}>
         <ProviderButton
           testID="continue-apple"
           label="Continue with Apple"
@@ -85,6 +99,18 @@ export default function WelcomeScreen({ navigation }: Props) {
           disabled={busy !== null}
           onPress={() => onContinue('google')}
         />
+        {__DEV__ && (
+          <Pressable
+            testID="continue-dev"
+            onPress={onDev}
+            disabled={busy !== null}
+            accessibilityRole="button"
+            accessibilityLabel="Continue as dev"
+            style={styles.devButton}
+          >
+            <Text style={styles.devText}>Continue as dev</Text>
+          </Pressable>
+        )}
         {message && (
           <Text testID="welcome-message" style={styles.message}>
             {message}
@@ -159,4 +185,6 @@ const styles = StyleSheet.create({
   appleText: { color: '#FFFFFF' },
   googleText: { color: color.ink900 },
   message: { ...type.caption, color: color.ink500, textAlign: 'center' },
+  devButton: { minHeight: minTapTarget, alignItems: 'center', justifyContent: 'center' },
+  devText: { ...type.caption, color: color.ink300 },
 });

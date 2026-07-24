@@ -16,3 +16,20 @@ jest.mock('react-native-safe-area-context', () =>
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+// expo-secure-store wraps native Keychain/Keystore (unavailable in jest). An in-memory mock lets the
+// auth store hydrate/persist in any test. (authStore.test overrides this with its own for assertions.)
+jest.mock('expo-secure-store', () => {
+  const mem = {};
+  return {
+    getItemAsync: jest.fn((k) => Promise.resolve(k in mem ? mem[k] : null)),
+    setItemAsync: jest.fn((k, v) => {
+      mem[k] = v;
+      return Promise.resolve();
+    }),
+    deleteItemAsync: jest.fn((k) => {
+      delete mem[k];
+      return Promise.resolve();
+    }),
+  };
+});

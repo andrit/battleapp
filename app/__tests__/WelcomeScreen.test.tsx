@@ -3,21 +3,13 @@ import { render, userEvent, waitFor } from '@testing-library/react-native';
 import WelcomeScreen from '../src/screens/auth/WelcomeScreen';
 import { useAuthStore } from '../src/state/authStore';
 
-const mockNavigate = jest.fn();
-const props = {
-  navigation: { navigate: mockNavigate },
-  route: { key: 'welcome', name: 'Welcome', params: undefined },
-} as unknown as Parameters<typeof WelcomeScreen>[0];
-
 beforeEach(() => {
-  mockNavigate.mockReset();
-  // Reset to a clean anon state; the default (real) signInWithProvider action stays in place.
   useAuthStore.setState({ accessToken: null, refreshToken: null, player: null, status: 'anon' });
 });
 
 describe('WelcomeScreen', () => {
   it('renders the wordmark, tagline, and both provider buttons', async () => {
-    const view = await render(<WelcomeScreen {...props} />);
+    const view = await render(<WelcomeScreen />);
     expect(view.getByText('battleapp')).toBeTruthy();
     expect(view.getByText(/one line at a time/)).toBeTruthy();
     expect(view.getByTestId('continue-apple')).toBeTruthy();
@@ -25,25 +17,21 @@ describe('WelcomeScreen', () => {
   });
 
   it('shows a friendly message when the (stubbed) provider flow is not configured', async () => {
-    const view = await render(<WelcomeScreen {...props} />);
+    const view = await render(<WelcomeScreen />);
     await userEvent.press(view.getByTestId('continue-google'));
     // The real signInWithProvider hits the OAuth stub → OAuthNotConfiguredError → friendly copy.
     expect(await view.findByTestId('welcome-message')).toBeTruthy();
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('routes a new-account sign-in to the handle pick', async () => {
-    // Simulate a successful sign-in that lands a freshly-generated handle.
+  it('the dev button signs in and lets the auth gate take over (status → authed)', async () => {
+    // Override the dev sign-in to avoid a real /me fetch; assert the store transitions to authed.
     useAuthStore.setState({
-      signInWithProvider: async () => {
-        useAuthStore.setState({
-          player: { id: 'p1', display_name: 'player_abcd1234' },
-          status: 'authed',
-        });
+      signInAsDev: async () => {
+        useAuthStore.setState({ player: { id: 'dev', display_name: 'dev' }, status: 'authed' });
       },
     });
-    const view = await render(<WelcomeScreen {...props} />);
-    await userEvent.press(view.getByTestId('continue-apple'));
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('HandlePick'));
+    const view = await render(<WelcomeScreen />);
+    await userEvent.press(view.getByTestId('continue-dev'));
+    await waitFor(() => expect(useAuthStore.getState().status).toBe('authed'));
   });
 });

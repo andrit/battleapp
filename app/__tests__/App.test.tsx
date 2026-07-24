@@ -21,8 +21,9 @@ globalThis.fetch = jest.fn((url: string) =>
 ) as unknown as typeof fetch;
 
 describe('App', () => {
-  it('renders the tab shell with the Stories tab focused', async () => {
+  it('boots through the auth gate to Welcome when there is no session', async () => {
     const screen = await render(<App />);
-    expect(await screen.findByText('No stories yet')).toBeTruthy();
+    // hydrate() finds no stored refresh token → anon → the gate shows Welcome (sign-in options).
+    expect(await screen.findByTestId('continue-google')).toBeTruthy();
   });
 });
