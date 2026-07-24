@@ -30,6 +30,16 @@ class MemoryPlayerRepo implements PlayerRepo {
     return this.byId.get(id) ?? null;
   }
 
+  async updateDisplayName(id: string, displayName: string): Promise<Player | 'taken'> {
+    const player = this.byId.get(id);
+    if (!player) return 'taken';
+    for (const p of this.byId.values()) {
+      if (p.id !== id && p.display_name === displayName) return 'taken';
+    }
+    player.display_name = displayName;
+    return player;
+  }
+
   /** Create + store a Player (used by the auth repo when a new OIDC identity signs in). */
   create(displayName: string): Player {
     const player: Player = {

@@ -145,6 +145,43 @@ describe('POST /auth/refresh', () => {
   });
 });
 
+describe('PATCH /me (first-run handle pick)', () => {
+  it('sets a unique display name for the authed player', async () => {
+    const { access_token } = (await signIn()).json();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: { authorization: `Bearer ${access_token}` },
+      payload: { display_name: 'ferrywriter' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().display_name).toBe('ferrywriter');
+  });
+
+  it('409s a handle already taken by another player', async () => {
+    const a = (await signIn('sub-a')).json();
+    await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: { authorization: `Bearer ${a.access_token}` },
+      payload: { display_name: 'taken_name' },
+    });
+    const b = (await signIn('sub-b')).json();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/me',
+      headers: { authorization: `Bearer ${b.access_token}` },
+      payload: { display_name: 'taken_name' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('401s without a token', async () => {
+    const res = await app.inject({ method: 'PATCH', url: '/me', payload: { display_name: 'x' } });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 describe('POST /auth/signout', () => {
   it('revokes the refresh token', async () => {
     const { refresh_token } = (await signIn()).json();

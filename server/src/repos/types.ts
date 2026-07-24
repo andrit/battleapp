@@ -12,6 +12,8 @@ export interface PlayerRepo {
    */
   ensureDevPlayer(): Promise<Player>;
   findById(id: string): Promise<Player | null>;
+  /** Set a player's unique display name (the first-run handle pick). 'taken' if it collides. */
+  updateDisplayName(id: string, displayName: string): Promise<Player | 'taken'>;
 }
 
 export interface StoryRepo {

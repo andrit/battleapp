@@ -61,7 +61,7 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockApi.listStories.mockReset();
   mockApi.createStory.mockReset();
-  useAuthStore.setState({ token: null, player: null, status: 'anon' }); // FALLBACK_ME = 'me'
+  useAuthStore.setState({ accessToken: null, refreshToken: null, player: null, status: 'anon' }); // FALLBACK_ME = 'me'
   usePreferencesStore.setState({
     list: { filter: 'all', sort: 'recent' },
     reading: { fontStep: 1, comfort: false, paper: 'warm' },

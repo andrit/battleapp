@@ -11,3 +11,9 @@ export type TabsParamList = {
   Discover: undefined;
   Profile: undefined;
 };
+
+// Auth flow (outside the tab shell). The First-story prompt + the status-driven gate land in Task 4.
+export type AuthStackParamList = {
+  Welcome: undefined;
+  HandlePick: undefined;
+};

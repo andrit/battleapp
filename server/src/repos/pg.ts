@@ -84,6 +84,19 @@ class PgPlayerRepo implements PlayerRepo {
     const [row] = await this.sql`SELECT * FROM players WHERE id = ${id}`;
     return row ? mapPlayer(row) : null;
   }
+
+  async updateDisplayName(id: string, displayName: string): Promise<Player | 'taken'> {
+    if (!isUuid(id)) return 'taken';
+    try {
+      const [row] = await this.sql`
+        UPDATE players SET display_name = ${displayName} WHERE id = ${id} RETURNING *`;
+      return row ? mapPlayer(row) : 'taken';
+    } catch (err) {
+      // 23505 = unique_violation on players.display_name → the handle is taken.
+      if ((err as { code?: string }).code === '23505') return 'taken';
+      throw err;
+    }
+  }
 }
 
 class PgStoryRepo implements StoryRepo {

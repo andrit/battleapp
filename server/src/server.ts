@@ -126,6 +126,26 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return repos.players.ensureDevPlayer();
   });
 
+  // PATCH /me — first-run handle pick: set the authed player's unique display name.
+  app.patch<{ Body: { display_name?: string } }>('/me', async (req, reply) => {
+    const player = await authedPlayer(req.headers.authorization);
+    if (!player) {
+      reply.code(401);
+      return { error: 'unauthorized' };
+    }
+    const name = req.body?.display_name?.trim();
+    if (!name || name.length < 1 || name.length > 40) {
+      reply.code(400);
+      return { error: 'invalid_display_name' };
+    }
+    const result = await repos.players.updateDisplayName(player.id, name);
+    if (result === 'taken') {
+      reply.code(409);
+      return { error: 'display_name_taken' };
+    }
+    return result;
+  });
+
   app.get('/stories', async () => ({ stories: await repos.stories.list() }));
 
   app.get<{ Params: { id: string } }>('/stories/:id', async (req, reply) => {

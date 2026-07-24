@@ -77,7 +77,7 @@ function renderWithClient(ui: ReactElement) {
 beforeEach(() => {
   mockGetStory.mockReset();
   // No real auth yet — FALLBACK_ME ('me') is the current player in these tests.
-  useAuthStore.setState({ token: null, player: null, status: 'anon' });
+  useAuthStore.setState({ accessToken: null, refreshToken: null, player: null, status: 'anon' });
 });
 
 describe('StoryScreen (Story View)', () => {
