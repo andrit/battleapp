@@ -17,7 +17,7 @@ import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '../../state/authStore';
-import { OAuthNotConfiguredError, type Provider } from '../../lib/oauth';
+import { OAuthCancelledError, OAuthNotConfiguredError, type Provider } from '../../lib/oauth';
 import { color, fontFamily, radius, space, type, minTapTarget } from '../../theme/tokens';
 
 // Brand-entrance timing — the staged reveal (wordmark → tagline → sign-in options). Delays are ms
@@ -47,11 +47,13 @@ export default function WelcomeScreen() {
       try {
         await signInWithProvider(provider); // gate routes on the resulting authStore change
       } catch (err) {
-        setMessage(
-          err instanceof OAuthNotConfiguredError
-            ? 'Social sign-in is coming soon.'
-            : 'Couldn’t sign in — please try again.',
-        );
+        if (err instanceof OAuthCancelledError) {
+          // User backed out of the provider sheet — not an error, show nothing.
+        } else if (err instanceof OAuthNotConfiguredError) {
+          setMessage('Social sign-in is coming soon.');
+        } else {
+          setMessage('Couldn’t sign in — please try again.');
+        }
       } finally {
         setBusy(null);
       }

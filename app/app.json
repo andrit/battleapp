@@ -35,7 +35,19 @@
       "expo-secure-store",
       "expo-font",
       "expo-splash-screen",
-      "expo-asset"
-    ]
+      "expo-asset",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_IOS_CLIENT_ID"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2cf6f236-8f0c-4289-b05b-584e6323ccb5"
+      }
+    },
+    "owner": "programmar1"
   }
 }
