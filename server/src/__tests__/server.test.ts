@@ -4,11 +4,20 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../server.js';
 import { createMemoryRepos } from '../repos/index.js';
 
-// Endpoint tests run against fresh in-memory repos each test (fast, isolated).
+// Endpoint tests run against fresh in-memory repos each test (fast, isolated). Story/turn routes
+// require auth now, so each test signs in as a dev account and sends a Bearer token.
 let app: FastifyInstance;
+let token: string; // a signed-in dev account ('tester')
+
+async function devToken(name: string): Promise<string> {
+  const res = await app.inject({ method: 'POST', url: '/auth/dev', payload: { name } });
+  return res.json().access_token as string;
+}
+const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
 beforeEach(async () => {
   app = await buildServer({ repos: createMemoryRepos() });
+  token = await devToken('tester');
 });
 
 afterEach(async () => {
@@ -23,32 +32,25 @@ describe('GET /health', () => {
   });
 });
 
-describe('GET /me', () => {
-  it('returns a stable dev player (bootstrap identity)', async () => {
-    const first = await app.inject({ method: 'GET', url: '/me' });
-    expect(first.statusCode).toBe(200);
-    expect(typeof first.json().id).toBe('string');
-    // Idempotent: the same dev player each call.
-    const second = await app.inject({ method: 'GET', url: '/me' });
-    expect(second.json().id).toBe(first.json().id);
-  });
-});
-
 describe('POST /stories', () => {
-  it('creates a settings-free lobby story', async () => {
+  it('401s without a token', async () => {
     const res = await app.inject({ method: 'POST', url: '/stories' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('creates a settings-free lobby story owned by the authed player', async () => {
+    const res = await app.inject({ method: 'POST', url: '/stories', headers: bearer(token) });
     expect(res.statusCode).toBe(201);
     const story = res.json();
     expect(story.state).toBe('lobby');
     expect(story.turn_limit).toBeNull();
-    expect(story.pace_preset).toBeNull();
     expect(story.settings_confirmed_at).toBeNull();
     expect(story.participants).toHaveLength(1); // the creator
   });
 
   it('lists created stories', async () => {
-    await app.inject({ method: 'POST', url: '/stories' });
-    await app.inject({ method: 'POST', url: '/stories' });
+    await app.inject({ method: 'POST', url: '/stories', headers: bearer(token) });
+    await app.inject({ method: 'POST', url: '/stories', headers: bearer(token) });
     const res = await app.inject({ method: 'GET', url: '/stories' });
     expect(res.json().stories).toHaveLength(2);
   });
@@ -60,22 +62,27 @@ describe('POST /stories', () => {
 });
 
 describe('POST /stories/:id/turns', () => {
-  it('appends turns with contiguous sequence numbers, visible via GET', async () => {
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+  async function newStory() {
+    return (await app.inject({ method: 'POST', url: '/stories', headers: bearer(token) })).json();
+  }
+
+  it('appends turns with contiguous sequence numbers, attributed to the author', async () => {
+    const story = await newStory();
     const res = await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
       payload: { content: 'It was a dark and stormy night.' },
     });
     expect(res.statusCode).toBe(201);
-    const turn = res.json();
-    expect(turn.sequence_number).toBe(1);
-    expect(turn.author_type).toBe('human');
+    expect(res.json().sequence_number).toBe(1);
+    expect(res.json().author_id).toBe(story.created_by);
 
     const second = (
       await app.inject({
         method: 'POST',
         url: `/stories/${story.id}/turns`,
+        headers: bearer(token),
         payload: { content: 'Then the lights went out.' },
       })
     ).json();
@@ -85,25 +92,37 @@ describe('POST /stories/:id/turns', () => {
     expect(fetched.turns).toHaveLength(2);
   });
 
-  it('activates a lobby story on its first turn and marks it the author’s turn (dev loop)', async () => {
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+  it('401s without a token', async () => {
+    const story = await newStory();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      payload: { content: 'no token' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('activates a lobby story on its first turn (solo → stays the author’s turn)', async () => {
+    const story = await newStory();
     expect(story.state).toBe('lobby');
     await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
       payload: { content: 'The opening line.' },
     });
     const after = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
     expect(after.state).toBe('active');
-    expect(after.current_author_id).toBe(story.created_by); // the dev player
+    expect(after.current_author_id).toBe(story.created_by); // solo: still your turn
     expect(after.activated_at).not.toBeNull();
   });
 
   it('rejects empty content with 400', async () => {
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    const story = await newStory();
     const res = await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -113,9 +132,63 @@ describe('POST /stories/:id/turns', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/stories/nope/turns',
+      headers: bearer(token),
       payload: { content: 'orphan' },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('join + turn alternation (two players)', () => {
+  it('a second player joins, then turns alternate between the two authors', async () => {
+    const alice = await devToken('alice');
+    const bob = await devToken('bob');
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers: bearer(alice) })).json();
+    const aliceId = story.created_by;
+
+    const joined = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/join`,
+      headers: bearer(bob),
+    });
+    expect(joined.statusCode).toBe(200);
+    expect(joined.json().participants).toHaveLength(2);
+    const bobId = joined.json().participants.find((p: { player_id: string }) => p.player_id !== aliceId)
+      .player_id;
+
+    // Alice writes → it becomes Bob's turn.
+    await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(alice),
+      payload: { content: 'The ferry left before dawn.' },
+    });
+    let s = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
+    expect(s.current_author_id).toBe(bobId);
+
+    // Bob writes → back to Alice.
+    await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(bob),
+      payload: { content: 'The water started answering back.' },
+    });
+    s = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
+    expect(s.current_author_id).toBe(aliceId);
+  });
+
+  it('409s a join when the story already has two authors', async () => {
+    const alice = await devToken('alice');
+    const bob = await devToken('bob');
+    const carol = await devToken('carol');
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers: bearer(alice) })).json();
+    await app.inject({ method: 'POST', url: `/stories/${story.id}/join`, headers: bearer(bob) });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/join`,
+      headers: bearer(carol),
+    });
+    expect(res.statusCode).toBe(409);
   });
 });
 
@@ -125,7 +198,9 @@ describe('WebSocket /ws/stories/:id', () => {
     const address = app.server.address();
     if (typeof address !== 'object' || address === null) throw new Error('no address');
 
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    const story = (
+      await app.inject({ method: 'POST', url: '/stories', headers: bearer(token) })
+    ).json();
     const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws/stories/${story.id}`);
 
     const messages: Array<{ type: string }> = [];
@@ -141,6 +216,7 @@ describe('WebSocket /ws/stories/:id', () => {
     await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
       payload: { content: 'A turn arrives over the wire.' },
     });
 

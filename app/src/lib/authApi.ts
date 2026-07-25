@@ -59,10 +59,6 @@ export const authApi = {
     return (await res.json()) as AuthPlayer;
   },
 
-  /** Dev bootstrap: `/me` with NO Authorization header → the server's dev player (transitional). */
-  devMe: async (): Promise<AuthPlayer> => {
-    const res = await fetch(`${BASE_URL}/me`);
-    if (!res.ok) throw new Error(`dev /me ${res.status}`);
-    return (await res.json()) as AuthPlayer;
-  },
+  /** Dev-only: sign in as a stable named test account (Alice/Bob) with real tokens. Retired with real auth. */
+  devSession: (name: string) => postJson<Session>('/auth/dev', { name }),
 };

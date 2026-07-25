@@ -27,6 +27,11 @@ export interface StoryRepo {
    * so the loop continues without a second player. No-op if the story is missing.
    */
   setActiveAuthor(storyId: string, authorId: string): Promise<void>;
+  /**
+   * Add a player as a story participant (dev join, until real invites). Idempotent: returns the
+   * story if already a participant; 'full' at the 2-author cap; 'not_found' if the story is missing.
+   */
+  addParticipant(storyId: string, playerId: string): Promise<Story | 'full' | 'not_found'>;
 }
 
 export interface TurnRepo {

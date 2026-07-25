@@ -19,6 +19,17 @@ export function useStories() {
   return useQuery({ queryKey: keys.stories, queryFn: api.listStories });
 }
 
+/** Join a story as its second author (dev stand-in for invites); refreshes the story on success. */
+export function useJoinStory(storyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.joinStory(storyId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.story(storyId) });
+    },
+  });
+}
+
 /** Create a settings-free lobby story (the Start Story FAB); refreshes the list on success. */
 export function useCreateStory() {
   const qc = useQueryClient();

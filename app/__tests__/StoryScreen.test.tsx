@@ -8,7 +8,7 @@ import { useAuthStore } from '../src/state/authStore';
 import type { StoryState, Turn } from '../src/domain/types';
 
 jest.mock('../src/lib/api', () => ({
-  api: { getStory: jest.fn(), submitTurn: jest.fn() },
+  api: { getStory: jest.fn(), submitTurn: jest.fn(), joinStory: jest.fn() },
   ApiError: class ApiError extends Error {},
   BASE_URL: 'http://localhost:4000',
 }));
@@ -155,6 +155,20 @@ describe('StoryScreen (Story View)', () => {
     const bar = await screen.findByTestId('your-turn-bar');
     await userEvent.press(bar);
     expect(navigate).toHaveBeenCalledWith('Compose', { id: 's1' });
+  });
+
+  it('offers a join bar when the viewer is not one of the authors (room to join)', async () => {
+    mockGetStory.mockResolvedValue(
+      makeStory({
+        participants: [{ player_id: 'p1', role: 'author', joined_at: 'now' }], // 'me' is not a participant
+        current_author_id: 'p1',
+        turns: [makeTurn('Opening.', 1, 'p1')],
+      }),
+    );
+    const screen = await renderWithClient(<StoryScreen {...props} />);
+    await screen.findByTestId('story-scroll');
+    expect(screen.getByTestId('join-bar')).toBeTruthy();
+    expect(screen.queryByTestId('your-turn-bar')).toBeNull();
   });
 
   it('shows the complete footer for a finished story', async () => {

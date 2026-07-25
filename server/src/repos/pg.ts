@@ -154,6 +154,19 @@ class PgStoryRepo implements StoryRepo {
           current_author_id = ${authorId}
       WHERE id = ${storyId}`;
   }
+
+  async addParticipant(storyId: string, playerId: string): Promise<Story | 'full' | 'not_found'> {
+    if (!isUuid(storyId)) return 'not_found';
+    const story = await this.findById(storyId);
+    if (!story) return 'not_found';
+    if (story.participants.some((p) => p.player_id === playerId)) return story;
+    if (story.participants.length >= 2) return 'full';
+    await this.sql`
+      INSERT INTO participants (story_id, player_id, role)
+      VALUES (${storyId}, ${playerId}, 'author')
+      ON CONFLICT DO NOTHING`;
+    return (await this.findById(storyId)) as Story;
+  }
 }
 
 class PgTurnRepo implements TurnRepo {

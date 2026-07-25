@@ -40,6 +40,16 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     }
   };
 
+  // Issue our session (access + refresh) for a player. Shared by every sign-in path.
+  const issueSession = async (player: Player) => {
+    const refresh = createRefreshToken();
+    await repos.auth.storeRefreshToken(refresh.hash, player.id, refresh.expiresAt);
+    return { access_token: await issueAccessToken(player.id), refresh_token: refresh.token, player };
+  };
+
+  // Dev-account sign-in is available outside production only.
+  const devAuthAllowed = process.env.NODE_ENV !== 'production';
+
   app.addHook('onClose', async () => {
     await repos.close();
   });
@@ -52,9 +62,12 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     version: '0.1.0',
   }));
 
-  app.post('/stories', async (_req, reply) => {
-    // ponytail: creator is the dev bootstrap player until auth (Phase 4).
-    const creator = await repos.players.ensureDevPlayer();
+  app.post('/stories', async (req, reply) => {
+    const creator = await authedPlayer(req.headers.authorization);
+    if (!creator) {
+      reply.code(401);
+      return { error: 'unauthorized' };
+    }
     const story = await repos.stories.create(creator.id);
     reply.code(201);
     return story;
@@ -77,12 +90,32 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         return { error: 'invalid_id_token' };
       }
       const player = await repos.auth.findOrCreatePlayer(claims.provider, claims.subject);
-      const refresh = createRefreshToken();
-      await repos.auth.storeRefreshToken(refresh.hash, player.id, refresh.expiresAt);
       reply.code(201);
-      return { access_token: await issueAccessToken(player.id), refresh_token: refresh.token, player };
+      return issueSession(player);
     },
   );
+
+  // POST /auth/dev — dev-only: sign in as a stable named test account (Alice/Bob) with real tokens.
+  // Lets two devices act as two different players (retires the no-auth /me bootstrap). Not in prod.
+  app.post<{ Body: { name?: string } }>('/auth/dev', async (req, reply) => {
+    if (!devAuthAllowed) {
+      reply.code(404);
+      return { error: 'not_found' };
+    }
+    const name = req.body?.name?.trim();
+    if (!name || !/^[a-z0-9_]{2,20}$/i.test(name)) {
+      reply.code(400);
+      return { error: 'invalid_name' };
+    }
+    let player = await repos.auth.findOrCreatePlayer('dev', name);
+    // Give the account a friendly handle (the name) on first creation.
+    if (/^player_[0-9a-f]{8}$/.test(player.display_name)) {
+      const named = await repos.players.updateDisplayName(player.id, name);
+      if (named !== 'taken') player = named;
+    }
+    reply.code(201);
+    return issueSession(player);
+  });
 
   // POST /auth/refresh — single-use rotation: validate the refresh token, issue a new pair.
   app.post<{ Body: { refresh_token?: string } }>('/auth/refresh', async (req, reply) => {
@@ -112,18 +145,14 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return null;
   });
 
-  // GET /me — the authed player when a Bearer token is present; otherwise the dev bootstrap.
-  // The dev fallback is TRANSITIONAL (retired in Task 5, once the client always authenticates).
+  // GET /me — the authenticated player (the client always signs in now; no dev fallback).
   app.get('/me', async (req, reply) => {
-    if (req.headers.authorization) {
-      const player = await authedPlayer(req.headers.authorization);
-      if (!player) {
-        reply.code(401);
-        return { error: 'unauthorized' };
-      }
-      return player;
+    const player = await authedPlayer(req.headers.authorization);
+    if (!player) {
+      reply.code(401);
+      return { error: 'unauthorized' };
     }
-    return repos.players.ensureDevPlayer();
+    return player;
   });
 
   // PATCH /me — first-run handle pick: set the authed player's unique display name.
@@ -166,6 +195,11 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         reply.code(400);
         return { error: 'content_invalid' };
       }
+      const author = await authedPlayer(req.headers.authorization);
+      if (!author) {
+        reply.code(401);
+        return { error: 'unauthorized' };
+      }
       // Moderation hook (ai-service-layer §4.1): every SubmitTurn is screened before storage.
       // Fail-closed — only passed content becomes a Turn; a moderation failure never stores.
       let verdict;
@@ -179,21 +213,41 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         reply.code(422);
         return { error: 'moderation_rejected', reason: verdict.reason };
       }
-      // ponytail: author is the dev bootstrap player until auth (Phase 4).
-      const author = await repos.players.ensureDevPlayer();
       const turn = await repos.turns.append(req.params.id, author.id, content);
       if (!turn) {
         reply.code(404);
         return { error: 'story_not_found' };
       }
-      // Dev single-player loop (Phase 5+ brings real turn alternation): activate the story on its
-      // first turn and keep it the dev player's turn so the loop continues without a partner.
-      await repos.stories.setActiveAuthor(req.params.id, author.id);
+      // Activate the story and hand the turn to the OTHER participant (alternation). With a single
+      // participant (solo dev testing) it stays the author's turn so the loop still continues.
+      const story = await repos.stories.findById(req.params.id);
+      const other = story?.participants.find((p) => p.player_id !== author.id);
+      await repos.stories.setActiveAuthor(req.params.id, other?.player_id ?? author.id);
       notifier.publish(req.params.id, { type: 'TurnAdded', payload: turn });
       reply.code(201);
       return turn;
     },
   );
+
+  // POST /stories/:id/join — the authed player joins a story as its second author (dev stand-in for
+  // real invites, which arrive in a later phase). This is what makes the two-player loop testable.
+  app.post<{ Params: { id: string } }>('/stories/:id/join', async (req, reply) => {
+    const player = await authedPlayer(req.headers.authorization);
+    if (!player) {
+      reply.code(401);
+      return { error: 'unauthorized' };
+    }
+    const result = await repos.stories.addParticipant(req.params.id, player.id);
+    if (result === 'not_found') {
+      reply.code(404);
+      return { error: 'story_not_found' };
+    }
+    if (result === 'full') {
+      reply.code(409);
+      return { error: 'story_full' };
+    }
+    return result;
+  });
 
   // Director hint (ai-service-layer §4.2): stall-gated, ≤1 per stalled turn, silent otherwise.
   // Always 200 with `{ hint: null }` when no hint applies — a missing hint is never an error.

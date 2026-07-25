@@ -23,15 +23,16 @@ describe('WelcomeScreen', () => {
     expect(await view.findByTestId('welcome-message')).toBeTruthy();
   });
 
-  it('the dev button signs in and lets the auth gate take over (status → authed)', async () => {
-    // Override the dev sign-in to avoid a real /me fetch; assert the store transitions to authed.
+  it('a dev account button signs in and lets the auth gate take over (status → authed)', async () => {
+    // Override the dev sign-in to avoid a real network call; assert the store transitions to authed.
     useAuthStore.setState({
-      signInAsDev: async () => {
-        useAuthStore.setState({ player: { id: 'dev', display_name: 'dev' }, status: 'authed' });
+      signInAsDevAccount: async (name) => {
+        useAuthStore.setState({ player: { id: name, display_name: name }, status: 'authed' });
       },
     });
     const view = await render(<WelcomeScreen />);
-    await userEvent.press(view.getByTestId('continue-dev'));
+    await userEvent.press(view.getByTestId('continue-dev-alice'));
     await waitFor(() => expect(useAuthStore.getState().status).toBe('authed'));
+    expect(useAuthStore.getState().player?.display_name).toBe('alice');
   });
 });

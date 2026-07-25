@@ -115,10 +115,28 @@ describe('GET /me (authed)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('falls back to the dev player when no token is sent (transitional)', async () => {
+  it('401s when no token is sent', async () => {
     const res = await app.inject({ method: 'GET', url: '/me' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().display_name).toBe('dev');
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('POST /auth/dev (dev accounts)', () => {
+  it('signs in as a stable named test account with real tokens', async () => {
+    const res = await app.inject({ method: 'POST', url: '/auth/dev', payload: { name: 'alice' } });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.player.display_name).toBe('alice');
+    expect(typeof body.access_token).toBe('string');
+    // idempotent: same name → same player
+    const again = await app.inject({ method: 'POST', url: '/auth/dev', payload: { name: 'alice' } });
+    expect(again.json().player.id).toBe(body.player.id);
+  });
+
+  it('two different names are two different players', async () => {
+    const a = (await app.inject({ method: 'POST', url: '/auth/dev', payload: { name: 'alice' } })).json();
+    const b = (await app.inject({ method: 'POST', url: '/auth/dev', payload: { name: 'bob' } })).json();
+    expect(b.player.id).not.toBe(a.player.id);
   });
 });
 

@@ -33,8 +33,8 @@ interface AuthState {
   status: AuthStatus;
   /** Run a provider OAuth flow → verify server-side → adopt the session. Throws on cancel/failure. */
   signInWithProvider: (provider: Provider) => Promise<void>;
-  /** Dev-only bootstrap: enter the app as the server's dev player (no real tokens). Retired in Task 5. */
-  signInAsDev: () => Promise<void>;
+  /** Dev-only: sign in as a named test account (Alice/Bob) with real tokens. Retired with real auth. */
+  signInAsDevAccount: (name: string) => Promise<void>;
   /** Adopt a fresh sign-in session: persist the refresh token, go authed. */
   signIn: (session: Session) => Promise<void>;
   /** Update the just-set player (e.g. after the first-run handle pick). */
@@ -59,9 +59,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await get().signIn(session);
   },
 
-  signInAsDev: async () => {
-    // Transitional: no OAuth needed in dev — adopt the server's dev player so the app is reachable.
-    set({ player: await authApi.devMe(), accessToken: null, refreshToken: null, status: 'authed' });
+  signInAsDevAccount: async (name) => {
+    // Transitional: real-token sign-in as a named test account, so two devices can be two players.
+    await get().signIn(await authApi.devSession(name));
   },
 
   signIn: async ({ access_token, refresh_token, player }) => {

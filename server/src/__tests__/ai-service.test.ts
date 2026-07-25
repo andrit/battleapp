@@ -12,6 +12,11 @@ afterEach(async () => {
   await app.close();
 });
 
+async function devBearer(): Promise<{ authorization: string }> {
+  const res = await app.inject({ method: 'POST', url: '/auth/dev', payload: { name: 'tester' } });
+  return { authorization: `Bearer ${res.json().access_token}` };
+}
+
 // --- Moderation hook (over real in-memory repos, with an injected verdict) ------
 
 describe('moderation hook on POST /stories/:id/turns', () => {
@@ -25,11 +30,13 @@ describe('moderation hook on POST /stories/:id/turns', () => {
       },
     };
     app = await buildServer({ repos: createMemoryRepos(), ai });
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    const headers = await devBearer();
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers })).json();
 
     const res = await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers,
       payload: { content: 'a blocked line' },
     });
     expect(res.statusCode).toBe(422);
@@ -49,11 +56,13 @@ describe('moderation hook on POST /stories/:id/turns', () => {
       },
     };
     app = await buildServer({ repos: createMemoryRepos(), ai });
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    const headers = await devBearer();
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers })).json();
 
     const res = await app.inject({
       method: 'POST',
       url: `/stories/${story.id}/turns`,
+      headers,
       payload: { content: 'unscreenable' },
     });
     expect(res.statusCode).toBe(502);
@@ -149,7 +158,8 @@ describe('GET /stories/:id/director-hint', () => {
   it('returns null (no error) when the turn is not stalled', async () => {
     // Fresh in-memory story is in lobby with no current author → never stalled.
     app = await buildServer({ repos: createMemoryRepos() });
-    const story = (await app.inject({ method: 'POST', url: '/stories' })).json();
+    const headers = await devBearer();
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers })).json();
     const res = await app.inject({ method: 'GET', url: `/stories/${story.id}/director-hint` });
     expect(res.statusCode).toBe(200);
     expect(res.json().hint).toBeNull();

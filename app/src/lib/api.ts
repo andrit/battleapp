@@ -63,6 +63,8 @@ export const api = {
   createStory: () => request<Story>('/stories', { method: 'POST' }),
   listStories: () => request<{ stories: Story[] }>('/stories'),
   getStory: (id: string) => request<StoryWithTurns>(`/stories/${id}`),
+  /** Join a story as its second author (dev stand-in for invites). Returns the updated story. */
+  joinStory: (id: string) => request<Story>(`/stories/${id}/join`, { method: 'POST' }),
   /** Stall-gated director hint; `hint` is null when none applies (never an error). */
   directorHint: (id: string) => request<{ hint: string | null }>(`/stories/${id}/director-hint`),
   submitTurn: (id: string, content: string) =>

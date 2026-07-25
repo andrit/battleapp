@@ -15,7 +15,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useStory } from '../lib/queries';
+import { useJoinStory, useStory } from '../lib/queries';
 import { useStoryWebSocket } from '../lib/storyWebSocket';
 import { useAuthStore } from '../state/authStore';
 import { usePreferencesStore } from '../state/preferencesStore';
@@ -35,6 +35,7 @@ const FALLBACK_ME = 'me';
 export default function StoryScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const story = useStory(id);
+  const join = useJoinStory(id);
   useStoryWebSocket(id); // live TurnAdded → patches the story cache
   const meId = useAuthStore((s) => s.player?.id) ?? FALLBACK_ME;
   const paper = usePreferencesStore((s) => s.reading.paper);
@@ -78,7 +79,13 @@ export default function StoryScreen({ route, navigation }: Props) {
         </View>
       )}
       <StoryBody data={data} meId={meId} paper={paper} onOpenCompose={openToCompose} />
-      <BottomBar data={data} meId={meId} onOpenCompose={openToCompose} />
+      <BottomBar
+        data={data}
+        meId={meId}
+        onOpenCompose={openToCompose}
+        onJoin={() => join.mutate()}
+        joining={join.isPending}
+      />
       <ReadingControlsSheet visible={readingOpen} onClose={() => setReadingOpen(false)} />
     </View>
   );
@@ -157,13 +164,41 @@ function BottomBar({
   data,
   meId,
   onOpenCompose,
+  onJoin,
+  joining,
 }: {
   data: Story & { turns: Turn[] };
   meId: string;
   onOpenCompose: () => void;
+  onJoin: () => void;
+  joining: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const pad = { paddingBottom: Math.max(insets.bottom, space[3]) };
+
+  // Not one of the authors: offer to join (if there's room), else you're just reading along.
+  const iAmAuthor = data.participants.some((p) => p.player_id === meId);
+  if (!iAmAuthor && data.state !== 'complete' && data.state !== 'abandoned') {
+    if (data.participants.length < 2) {
+      return (
+        <Pressable
+          testID="join-bar"
+          onPress={onJoin}
+          disabled={joining}
+          accessibilityRole="button"
+          accessibilityLabel="Join this story"
+          style={[styles.primaryBar, pad]}
+        >
+          <Text style={styles.primaryBarText}>{joining ? 'Joining…' : 'Join this story ›'}</Text>
+        </Pressable>
+      );
+    }
+    return (
+      <View testID="spectating-bar" style={[styles.waitingBar, pad]}>
+        <Text style={styles.waitingText}>You’re reading along.</Text>
+      </View>
+    );
+  }
 
   if (data.state === 'complete') {
     return (

@@ -32,7 +32,7 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const signInWithProvider = useAuthStore((s) => s.signInWithProvider);
-  const signInAsDev = useAuthStore((s) => s.signInAsDev);
+  const signInAsDevAccount = useAuthStore((s) => s.signInAsDevAccount);
   const [busy, setBusy] = useState<Provider | 'dev' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -59,17 +59,20 @@ export default function WelcomeScreen() {
     [signInWithProvider],
   );
 
-  const onDev = useCallback(async () => {
-    setMessage(null);
-    setBusy('dev');
-    try {
-      await signInAsDev();
-    } catch {
-      setMessage('Couldn’t reach the dev server.');
-    } finally {
-      setBusy(null);
-    }
-  }, [signInAsDev]);
+  const onDev = useCallback(
+    async (name: string) => {
+      setMessage(null);
+      setBusy('dev');
+      try {
+        await signInAsDevAccount(name);
+      } catch {
+        setMessage('Couldn’t reach the dev server.');
+      } finally {
+        setBusy(null);
+      }
+    },
+    [signInAsDevAccount],
+  );
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -100,16 +103,28 @@ export default function WelcomeScreen() {
           onPress={() => onContinue('google')}
         />
         {__DEV__ && (
-          <Pressable
-            testID="continue-dev"
-            onPress={onDev}
-            disabled={busy !== null}
-            accessibilityRole="button"
-            accessibilityLabel="Continue as dev"
-            style={styles.devButton}
-          >
-            <Text style={styles.devText}>Continue as dev</Text>
-          </Pressable>
+          <View style={styles.devRow}>
+            <Pressable
+              testID="continue-dev-alice"
+              onPress={() => onDev('alice')}
+              disabled={busy !== null}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in as Alice (dev)"
+              style={styles.devButton}
+            >
+              <Text style={styles.devText}>Dev: Alice</Text>
+            </Pressable>
+            <Pressable
+              testID="continue-dev-bob"
+              onPress={() => onDev('bob')}
+              disabled={busy !== null}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in as Bob (dev)"
+              style={styles.devButton}
+            >
+              <Text style={styles.devText}>Dev: Bob</Text>
+            </Pressable>
+          </View>
         )}
         {message && (
           <Text testID="welcome-message" style={styles.message}>
@@ -185,6 +200,7 @@ const styles = StyleSheet.create({
   appleText: { color: '#FFFFFF' },
   googleText: { color: color.ink900 },
   message: { ...type.caption, color: color.ink500, textAlign: 'center' },
-  devButton: { minHeight: minTapTarget, alignItems: 'center', justifyContent: 'center' },
+  devRow: { flexDirection: 'row', justifyContent: 'center', gap: space[5] },
+  devButton: { minHeight: minTapTarget, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space[3] },
   devText: { ...type.caption, color: color.ink300 },
 });

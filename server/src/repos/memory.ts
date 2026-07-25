@@ -131,6 +131,15 @@ class MemoryStoryRepo implements StoryRepo {
     story.activated_at ??= now();
     story.current_author_id = authorId;
   }
+
+  async addParticipant(storyId: string, playerId: string): Promise<Story | 'full' | 'not_found'> {
+    const story = this.byId.get(storyId);
+    if (!story) return 'not_found';
+    if (story.participants.some((p) => p.player_id === playerId)) return story;
+    if (story.participants.length >= 2) return 'full';
+    story.participants.push({ player_id: playerId, role: 'author', joined_at: now() });
+    return story;
+  }
 }
 
 class MemoryTurnRepo implements TurnRepo {
