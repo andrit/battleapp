@@ -52,7 +52,12 @@ export default function WelcomeScreen() {
         } else if (err instanceof OAuthNotConfiguredError) {
           setMessage('Social sign-in is coming soon.');
         } else {
-          setMessage('Couldn’t sign in — please try again.');
+          if (__DEV__) console.warn('[welcome] sign-in failed:', err); // real cause in Metro logs
+          setMessage(
+            __DEV__ && err instanceof Error
+              ? `Couldn’t sign in — ${err.message}` // dev: surface the actual error on-screen
+              : 'Couldn’t sign in — please try again.',
+          );
         }
       } finally {
         setBusy(null);

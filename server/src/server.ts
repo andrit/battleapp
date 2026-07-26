@@ -85,7 +85,9 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
       let claims;
       try {
         claims = await verifyIdToken(provider, id_token, oidc);
-      } catch {
+      } catch (err) {
+        // Log the real reason (aud mismatch, expired, JWKS unreachable) — the client only sees a 401.
+        req.log.warn({ err, provider }, 'oidc id_token verification failed');
         reply.code(401);
         return { error: 'invalid_id_token' };
       }
