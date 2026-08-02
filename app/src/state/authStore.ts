@@ -31,14 +31,26 @@ interface AuthState {
   refreshToken: string | null; // mirror of SecureStore, for refresh/sign-out calls
   player: AuthPlayer | null;
   status: AuthStatus;
+  /**
+   * A brand-new account that just finished the handle pick — routes to the one-time First-story
+   * prompt (screen-states #4) before the app. In-memory only, so it shows exactly once: a returning
+   * user hydrates straight into the app on cold start.
+   */
+  justOnboarded: boolean;
+  /** One-shot: the First-story prompt's "Start a story" was tapped → Stories opens the create flow. */
+  pendingStart: boolean;
   /** Run a provider OAuth flow → verify server-side → adopt the session. Throws on cancel/failure. */
   signInWithProvider: (provider: Provider) => Promise<void>;
   /** Dev-only: sign in as a named test account (Alice/Bob) with real tokens. Retired with real auth. */
   signInAsDevAccount: (name: string) => Promise<void>;
   /** Adopt a fresh sign-in session: persist the refresh token, go authed. */
   signIn: (session: Session) => Promise<void>;
-  /** Update the just-set player (e.g. after the first-run handle pick). */
-  setPlayer: (player: AuthPlayer) => void;
+  /** Adopt the chosen handle for a brand-new account → show the one-time First-story prompt next. */
+  completeHandlePick: (player: AuthPlayer) => void;
+  /** Leave the First-story prompt into the app; `start` carries the "Start a story" intent. */
+  dismissFirstStory: (start: boolean) => void;
+  /** Stories consumed the "Start a story" intent (create flow launched) — clear it. */
+  clearPendingStart: () => void;
   /** Cold-start restore: refresh-token → new access → player. Signs out if the token is stale. */
   hydrate: () => Promise<void>;
   /** Rotate the tokens; returns a fresh access token, or null if refresh failed (→ signed out). */
@@ -52,6 +64,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshToken: null,
   player: null,
   status: 'loading',
+  justOnboarded: false,
+  pendingStart: false,
 
   signInWithProvider: async (provider) => {
     const idToken = await getProviderIdToken(provider); // provider OAuth flow (native)
@@ -69,7 +83,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken: access_token, refreshToken: refresh_token, player, status: 'authed' });
   },
 
-  setPlayer: (player) => set({ player }),
+  completeHandlePick: (player) => set({ player, justOnboarded: true }),
+
+  dismissFirstStory: (start) => set({ justOnboarded: false, pendingStart: start }),
+
+  clearPendingStart: () => set({ pendingStart: false }),
 
   hydrate: async () => {
     const stored = await SecureStore.getItemAsync(REFRESH_KEY);
@@ -114,6 +132,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     await SecureStore.deleteItemAsync(REFRESH_KEY);
-    set({ accessToken: null, refreshToken: null, player: null, status: 'anon' });
+    set({
+      accessToken: null,
+      refreshToken: null,
+      player: null,
+      status: 'anon',
+      justOnboarded: false,
+      pendingStart: false,
+    });
   },
 }));

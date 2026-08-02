@@ -3,6 +3,7 @@ export type RootStackParamList = {
   Splash: undefined;
   Welcome: undefined;
   HandlePick: undefined;
+  FirstStory: undefined;
   // App (shown once authed with a handle).
   Tabs: undefined;
   Story: { id: string };

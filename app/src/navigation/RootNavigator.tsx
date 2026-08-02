@@ -10,6 +10,7 @@ import ComposeScreen from '../screens/ComposeScreen';
 import SplashScreen from '../screens/SplashScreen';
 import WelcomeScreen from '../screens/auth/WelcomeScreen';
 import HandlePickScreen from '../screens/auth/HandlePickScreen';
+import FirstStoryScreen from '../screens/auth/FirstStoryScreen';
 import { needsHandle, useAuthStore } from '../state/authStore';
 import type { RootStackParamList, TabsParamList } from './types';
 
@@ -29,11 +30,13 @@ function TabsNavigator() {
 /**
  * The auth gate. `authStore.status` (+ whether the player still needs a handle) decides which set of
  * screens exists — React Navigation resets automatically as that state changes:
- *   loading → Splash · not authed → Welcome · authed & needs handle → HandlePick · else → the app.
+ *   loading → Splash · not authed → Welcome · authed & needs handle → HandlePick ·
+ *   just onboarded → First-story prompt (one-time) · else → the app.
  */
 export default function RootNavigator() {
   const status = useAuthStore((s) => s.status);
   const player = useAuthStore((s) => s.player);
+  const justOnboarded = useAuthStore((s) => s.justOnboarded);
 
   return (
     <NavigationContainer>
@@ -46,6 +49,12 @@ export default function RootNavigator() {
           <Stack.Screen
             name="HandlePick"
             component={HandlePickScreen}
+            options={{ headerShown: false }}
+          />
+        ) : justOnboarded ? (
+          <Stack.Screen
+            name="FirstStory"
+            component={FirstStoryScreen}
             options={{ headerShown: false }}
           />
         ) : (

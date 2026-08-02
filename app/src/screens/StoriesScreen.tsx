@@ -7,7 +7,7 @@
  * Two data gaps carried from Task 4 shape the cards: the list payload has no author display names
  * ("Partner" until server enrichment) and no per-story turn count (we show whose-turn + limit).
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -118,6 +118,8 @@ export default function StoriesScreen() {
   const stories = useStories();
   const create = useCreateStory();
   const meId = useAuthStore((s) => s.player?.id) ?? FALLBACK_ME;
+  const pendingStart = useAuthStore((s) => s.pendingStart);
+  const clearPendingStart = useAuthStore((s) => s.clearPendingStart);
   const { filter, sort } = usePreferencesStore((s) => s.list);
   const setFilter = usePreferencesStore((s) => s.setFilter);
   const setSort = usePreferencesStore((s) => s.setSort);
@@ -131,6 +133,14 @@ export default function StoriesScreen() {
       },
     });
   }, [create, navigation]);
+
+  // The First-story prompt's "Start a story" hands off here: clear the one-shot intent, then run the
+  // same create-and-open flow the list's own CTA uses. Clearing first ensures it fires exactly once.
+  useEffect(() => {
+    if (!pendingStart) return;
+    clearPendingStart();
+    onStart();
+  }, [pendingStart, clearPendingStart, onStart]);
 
   const raw = stories.data?.stories;
 

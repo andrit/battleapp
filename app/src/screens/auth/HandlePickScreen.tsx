@@ -15,7 +15,7 @@ const HANDLE_RE = /^[a-z0-9_]{3,20}$/i;
 
 export default function HandlePickScreen() {
   const insets = useSafeAreaInsets();
-  const setPlayer = useAuthStore((s) => s.setPlayer);
+  const completeHandlePick = useAuthStore((s) => s.completeHandlePick);
   const [handle, setHandle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,8 @@ export default function HandlePickScreen() {
     setError(null);
     try {
       const player = await api.setDisplayName(name);
-      setPlayer(player); // authed with a real handle now — the app gate (Task 4) takes over
+      // Real handle now → the gate advances to the one-time First-story prompt, then the app.
+      completeHandlePick(player);
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 409
@@ -39,7 +40,7 @@ export default function HandlePickScreen() {
     } finally {
       setBusy(false);
     }
-  }, [handle, valid, busy, setPlayer]);
+  }, [handle, valid, busy, completeHandlePick]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + space[8], paddingBottom: insets.bottom }]}>

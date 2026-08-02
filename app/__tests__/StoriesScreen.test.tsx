@@ -1,4 +1,4 @@
-import { render, userEvent } from '@testing-library/react-native';
+import { render, userEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
@@ -61,7 +61,15 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockApi.listStories.mockReset();
   mockApi.createStory.mockReset();
-  useAuthStore.setState({ accessToken: null, refreshToken: null, player: null, status: 'anon' }); // FALLBACK_ME = 'me'
+  // FALLBACK_ME = 'me'. Reset the onboarding one-shots so they can't leak between tests.
+  useAuthStore.setState({
+    accessToken: null,
+    refreshToken: null,
+    player: null,
+    status: 'anon',
+    justOnboarded: false,
+    pendingStart: false,
+  });
   usePreferencesStore.setState({
     list: { filter: 'all', sort: 'recent' },
     reading: { fontStep: 1, comfort: false, paper: 'warm' },
@@ -116,6 +124,19 @@ describe('StoriesScreen', () => {
     await userEvent.press(screen.getByTestId('start-story-fab'));
     expect(mockNavigate).toHaveBeenCalledWith('Story', { id: 'new-1' });
     expect(analytics.storyStarted).toHaveBeenCalledWith('new-1');
+  });
+
+  it('consumes a pending "Start a story" intent on mount: creates a story, opens it, clears the flag', async () => {
+    mockApi.listStories.mockResolvedValue({ stories: [] });
+    mockApi.createStory.mockResolvedValue({ id: 'new-1' } as StoryWithTurns);
+    useAuthStore.setState({ pendingStart: true }); // set by the First-story prompt's "Start a story"
+
+    const screen = await renderWithClient(<StoriesScreen />);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('Story', { id: 'new-1' }));
+    expect(mockApi.createStory).toHaveBeenCalledTimes(1); // fires exactly once
+    expect(useAuthStore.getState().pendingStart).toBe(false);
+    screen.unmount();
   });
 
   it('filters the list to completed stories when the Completed chip is selected', async () => {

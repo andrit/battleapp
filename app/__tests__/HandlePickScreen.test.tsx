@@ -11,6 +11,7 @@ beforeEach(() => {
     refreshToken: 'r',
     player: { id: 'p1', display_name: 'player_1a2b3c4d' },
     status: 'authed',
+    justOnboarded: false,
   });
 });
 
@@ -34,8 +35,10 @@ describe('HandlePickScreen', () => {
     await userEvent.press(view.getByTestId('handle-submit'));
 
     await waitFor(() => expect(spy).toHaveBeenCalledWith('alice'));
-    // setPlayer adopted the real handle → the gate (RootNavigator) advances into the app.
+    // completeHandlePick adopted the real handle AND flagged onboarding → the gate advances to the
+    // one-time First-story prompt next.
     expect(useAuthStore.getState().player?.display_name).toBe('alice');
+    expect(useAuthStore.getState().justOnboarded).toBe(true);
   });
 
   it('surfaces the "taken" copy on a 409 without changing the player', async () => {

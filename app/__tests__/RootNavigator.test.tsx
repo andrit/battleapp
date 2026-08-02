@@ -28,6 +28,11 @@ const realPlayer: AuthPlayer = { id: 'p1', display_name: 'alice' };
 // A freshly-created OIDC account still carries a generated `player_xxxxxxxx` handle to rename.
 const freshPlayer: AuthPlayer = { id: 'p2', display_name: 'player_1a2b3c4d' };
 
+beforeEach(() => {
+  // Reset the onboarding one-shots so a state set in one case can't leak into the next.
+  useAuthStore.setState({ justOnboarded: false, pendingStart: false });
+});
+
 describe('RootNavigator (the auth gate)', () => {
   it('status "loading" shows the hydration splash', async () => {
     useAuthStore.setState({ status: 'loading', player: null });
@@ -49,8 +54,15 @@ describe('RootNavigator (the auth gate)', () => {
     expect(view.queryByTestId('tab-stories')).toBeNull();
   });
 
-  it('authed with a real handle routes straight into the app (Tabs)', async () => {
-    useAuthStore.setState({ status: 'authed', player: realPlayer });
+  it('authed with a real handle but just onboarded shows the one-time First-story prompt', async () => {
+    useAuthStore.setState({ status: 'authed', player: realPlayer, justOnboarded: true });
+    const view = await render(<RootNavigator />);
+    expect(await view.findByTestId('first-story-start')).toBeTruthy();
+    expect(view.queryByTestId('tab-stories')).toBeNull();
+  });
+
+  it('authed with a real handle (not onboarding) routes straight into the app (Tabs)', async () => {
+    useAuthStore.setState({ status: 'authed', player: realPlayer, justOnboarded: false });
     const view = await render(<RootNavigator />);
     expect(await view.findByTestId('tab-stories')).toBeTruthy();
     expect(view.queryByTestId('continue-google')).toBeNull();
