@@ -40,7 +40,7 @@ the problem log below are updated as the work moves. Companion doc: the wiring r
 | iOS bundle identifier | `com.andrit.battleapp` | `app.json` → `ios.bundleIdentifier` |
 | Android package | `com.andrit.battleapp` | `app.json` → `android.package` |
 | Expo project | slug `battleapp`, projectId `2cf6f236-…`, owner `programmar1` | `app.json` → `extra.eas` |
-| Google **Web** client ID | ⚠️ TODO — must be **Type: Web application** | `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (app/.env) + `GOOGLE_CLIENT_ID` (root .env) |
+| Google **Web** client ID | `764743394823-1641883…` (Type: **Web application**) ✅ | `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (app/.env) + `GOOGLE_CLIENT_ID` (root .env) + `eas.json` `development.env` |
 | Google **Android** client | `764743394823-iclme50…` (Type: Android) + package + EAS keystore SHA-1 | Google Cloud only — **not in code** |
 | Google **iOS** client ID | `764743394823-2i9u2i…` (Type: iOS) | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (app/.env) + reversed as `app.json` `iosUrlScheme` |
 | Apple Services ID | TODO (deferred) | `APPLE_CLIENT_ID` (root .env) |
@@ -57,9 +57,9 @@ Legend: [x] done · [~] in progress · [ ] not started
       dev keystore's `SHA1 Fingerprint` (from `npx eas-cli credentials -p android`). Confirmed match.
 - [x] **iOS** client — Application type iOS, Bundle ID `com.andrit.battleapp` (App Store ID / Team ID
       optional, left blank pre-launch).
-- [ ] **Web** client — Application type **Web application**. ⚠️ **This is the current blocker** — the
-      value we've been using as the Web ID (`iclme50…`) is actually the *Android* client. Create a
-      real Web client and use its ID.
+- [x] **Web** client — Application type **Web application**. Created (`…1641883…`); this is the value
+      used as `webClientId` / server `aud`. (The earlier `iclme50…` was the *Android* client — wrong
+      type for `webClientId`, which caused `DEVELOPER_ERROR` on Android.)
 - [ ] **OAuth consent screen** — app name, support email, scopes (`openid`, `email`, `profile`).
       While in "Testing", add yourself as a **test user**. (Basic profile/email are non-sensitive, so
       no Google verification is required to publish.)
@@ -69,8 +69,9 @@ Legend: [x] done · [~] in progress · [ ] not started
       / `AUTH_JWT_SECRET` via `${VAR:-}`.
 - [x] `app/.env` (gitignored) + `.env.example` with `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` /
       `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`.
-- [ ] Put the real **Web** client ID in **both** `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and
-      `GOOGLE_CLIENT_ID` (they must match).
+- [x] Put the real **Web** client ID in **both** `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and
+      `GOOGLE_CLIENT_ID` (they must match) — plus `eas.json` `development.env` so standalone dev builds
+      embed it too.
 - [x] `app.json` `iosUrlScheme` = reversed iOS client ID.
 
 ### C. App code
@@ -90,21 +91,31 @@ Legend: [x] done · [~] in progress · [ ] not started
 
 ### E. Verify on-device
 - [x] Backend reachable — `EXPO_PUBLIC_API_URL` = LAN IP (`192.168.1.228:4000`), phone on same Wi-Fi.
-- [ ] **"Continue with Google" completes a real sign-in** ← the goal, currently blocked by the missing
-      Web client (see A).
+- [x] **"Continue with Google" completes a real sign-in** — done 2026-08-03 (signed in on device and
+      ran a turn).
 
 ---
 
-## Where we are right now (2026-07-26)
+## Where we are right now (2026-08-03)
 
-Google sign-in is fully wired in code and the Android dev build is on the phone, but tapping
-**Continue with Google** returns **`DEVELOPER_ERROR`** and nothing reaches the server.
+**Google sign-in works end-to-end** — signed in on a device and ran a turn. Resolution: created a real
+**Web application** OAuth client (`…1641883…`) and wired its id into all three places that share the
+`aud` — `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (app/.env), `GOOGLE_CLIENT_ID` (root .env), and `eas.json`
+`development.env` (so standalone dev builds embed it and don't fall into "coming soon").
 
-**Root cause identified:** the `webClientId` we're passing is an **Android-type** client ID, but
-`webClientId` must be a **Web application** client. That's an invalid config → `DEVELOPER_ERROR`
-before any token is issued (hence the empty server log).
+The old `…iclme50…` was the **Android** client, not a Web client. Passing an Android-type id as
+`webClientId` is what produced `DEVELOPER_ERROR` **on Android** — iOS was lenient and had worked
+because the server's `aud` also used that same id, so the (wrong) contract was internally consistent.
+
+No remaining Google blocker. **Apple is still deferred** (needs a Services ID). Note for future EAS
+builds: a new build can sign with a different keystore → if `DEVELOPER_ERROR` returns, reconcile the
+**Android** client's SHA-1 with the new keystore (`npx eas-cli credentials -p android`).
 
 ## What's next to finish (immediate)
+
+> **Done 2026-08-03** — steps 1–5 below were completed and Google sign-in now works (see snapshot
+> above). Step 6 (iOS Simulator dev client) remains optional. Kept for the record / as the Apple
+> template.
 
 1. Create a **Web application** OAuth client in Google Cloud (Section A).
 2. Put its ID in **both** `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (app/.env) and `GOOGLE_CLIENT_ID`
@@ -155,7 +166,10 @@ next person don't re-learn it.
 | 6 | Which library for Google? | SDK 57 **deprecated** `expo-auth-session`'s Google provider | Switched to native `@react-native-google-signin/google-signin` → **requires a dev build** (not Expo Go). |
 | 7 | On-device "Couldn't sign in — please try again" with no detail | Both client and server swallowed the real error | Server `/auth/oidc` now `req.log.warn`s the verify failure; WelcomeScreen shows the raw error in `__DEV__`. |
 | 8 | (revealed by #7) `DEVELOPER_ERROR`, nothing reaches server | Native Google config rejected the app before issuing a token | Investigated SHA-1 (matched) → found the real cause: ↓ |
-| 9 | **`DEVELOPER_ERROR` persists though SHA-1 matches** | `webClientId` was set to an **Android-type** client ID; it must be a **Web application** client | **(in progress)** Create a Web client; use its ID for `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` + `GOOGLE_CLIENT_ID`. |
+| 9 | **`DEVELOPER_ERROR` persists though SHA-1 matches** | `webClientId` was set to an **Android-type** client ID; it must be a **Web application** client | **RESOLVED 2026-08-03** — created a real **Web application** client (`…1641883…`); set it as `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` + `GOOGLE_CLIENT_ID` + `eas.json` `development.env`. Sign-in works. |
+| 10 | "Worked on iOS, `DEVELOPER_ERROR` on Android" with the *same* config | Android's native layer **strictly** requires `webClientId` to be a **Web**-type client; iOS is lenient. The `aud` check passed on both because the server's `GOOGLE_CLIENT_ID` used the same (Android) id | Same fix as #9 — a real Web client makes both platforms correct. Lesson: test Google on **Android** early; iOS can mask a bad `webClientId`. |
+| 11 | After fixing app/.env, still 401-risk: `aud` mismatch | Root `.env` `GOOGLE_CLIENT_ID` was **left on the old `iclme50…`** (the edit didn't take) while app/.env had the new id → client `aud` ≠ server `aud` | Corrected root `.env` to the new Web id; added a three-way match check (app/.env == root .env == eas.json). Server reads it **at boot** → `docker compose up -d --force-recreate game-server`. |
+| 12 | `DEVELOPER_ERROR` returns after an EAS **rebuild** | A new build signed with a **different keystore** → SHA-1 no longer matches the Android OAuth client | Reconcile: `npx eas-cli credentials -p android` → put that SHA-1 on the Android client (or pin one keystore so it stays stable). |
 
 ### Debugging cheat-sheet (what the failure mode tells you)
 - **"Social sign-in is coming soon"** → env not set (Expo Go, or `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`

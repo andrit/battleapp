@@ -8,6 +8,10 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "764743394823-1641883so8i797m3kvpe1k98knr4ij1j.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "764743394823-2i9u2isvut0d5spmj2t01pagpll9i3b8.apps.googleusercontent.com"
+      },
       "ios": {
         "simulator": true
       }
