@@ -34,7 +34,9 @@ See `docs/engineering/social-signin-setup.md` (runbook + problem log) for the fu
       **First-story prompt** ("You're in!") appears **once**; "Start a story" → a freshly created story
       (Compose-ready); "Browse" → the Stories list. *(Needs a fresh Google account to observe — the
       tester's account already existed, so this path wasn't exercised yet.)*
-- [ ] Refresh token is stored in **SecureStore/Keychain**, confirmed **NOT** in AsyncStorage.
+- [x] Refresh token is stored in **SecureStore/Keychain**, confirmed **NOT** in AsyncStorage.
+      *Verified on device 2026-08-03 (Profile dev audit: AsyncStorage keys = `battleapp.prefs` +
+      `battleapp.cache.stories` only; token round-trips SecureStore; no AsyncStorage entry holds it).*
 - [ ] Token refresh happens **without** the user seeing a sign-in screen (silent refresh).
 - [ ] **Cold start** with a valid session goes **straight to the app** — no Welcome, and the
       First-story prompt does **not** re-appear (it's one-time).

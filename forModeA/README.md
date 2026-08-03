@@ -11,8 +11,8 @@ Close an item by moving it to `## Done` with the date it was resolved.
 
 - [001](001-phase5-ondevice-oauth-verification.md) — **Phase 5:** on-device verification of the real
   OAuth sign-in + First-story onboarding flow. **In progress** — Google sign-in verified on device
-  2026-08-03; secure-storage/session criteria (Keychain-not-AsyncStorage, silent refresh, cold-start,
-  sign-out) + new-account onboarding remain. *Opened 2026-08-02.*
+  2026-08-03; Keychain-not-AsyncStorage verified 2026-08-03; session criteria (silent refresh,
+  cold-start, sign-out) + new-account onboarding remain. *Opened 2026-08-02.*
 
 ## Done
 
