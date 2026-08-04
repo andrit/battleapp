@@ -47,7 +47,7 @@ describe('api.ts auth interceptor', () => {
     mockState.refreshToken = 'rt';
     mockState.refresh = jest.fn(async () => {
       mockState.accessToken = 'new';
-      return 'new';
+      return { status: 'refreshed', accessToken: 'new' };
     });
     const fetchMock: jest.Mock = jest
       .fn()
@@ -63,10 +63,10 @@ describe('api.ts auth interceptor', () => {
     expect(result).toEqual({ stories: [] });
   });
 
-  it('when the refresh fails (returns null), the 401 surfaces as an ApiError', async () => {
+  it('when the refresh does not succeed (invalid/offline), the 401 surfaces as an ApiError', async () => {
     mockState.accessToken = 'old';
     mockState.refreshToken = 'rt';
-    mockState.refresh = jest.fn(async () => null); // refresh failed → signed out
+    mockState.refresh = jest.fn(async () => ({ status: 'invalid' })); // token rejected → signed out
     const fetchMock: jest.Mock = jest.fn(unauthorized);
     (globalThis as unknown as { fetch: unknown }).fetch = fetchMock;
 

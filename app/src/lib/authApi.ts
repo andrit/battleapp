@@ -20,13 +20,31 @@ export interface Session {
   player: AuthPlayer;
 }
 
+/** Thrown when an auth endpoint responds non-2xx. A `fetch` rejection (offline/unreachable) stays a
+ *  TypeError — NOT an AuthApiError — which is exactly how callers tell "offline" from "token rejected". */
+export class AuthApiError extends Error {
+  constructor(
+    readonly status: number,
+    path: string,
+  ) {
+    super(`auth ${path} ${status}`);
+    this.name = 'AuthApiError';
+  }
+}
+
+/** True only when the server actively rejected our token (401/403) — the sign-out signal. A network
+ *  failure or a 5xx is NOT a rejection: keep the session and retry later. */
+export function isAuthRejection(err: unknown): boolean {
+  return err instanceof AuthApiError && (err.status === 401 || err.status === 403);
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`auth ${path} ${res.status}`);
+  if (!res.ok) throw new AuthApiError(res.status, path);
   return (await res.json()) as T;
 }
 
@@ -55,7 +73,7 @@ export const authApi = {
     const res = await fetch(`${BASE_URL}/me`, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(`auth /me ${res.status}`);
+    if (!res.ok) throw new AuthApiError(res.status, '/me');
     return (await res.json()) as AuthPlayer;
   },
 

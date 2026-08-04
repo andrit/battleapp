@@ -11,10 +11,20 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
-import { authApi, type AuthPlayer, type Provider, type Session } from '../lib/authApi';
+import { authApi, isAuthRejection, type AuthPlayer, type Provider, type Session } from '../lib/authApi';
+import { clearPlayer, loadPlayer, savePlayer } from '../lib/playerCache';
 import { getProviderIdToken } from '../lib/oauth';
 
 export type { AuthPlayer, Session } from '../lib/authApi';
+
+/**
+ * Outcome of a token rotation. Only `invalid` (the server rejected the token) ends the session;
+ * `offline` is a transient/network failure where the session and refresh token are KEPT for retry.
+ */
+export type RefreshResult =
+  | { status: 'refreshed'; accessToken: string }
+  | { status: 'invalid' }
+  | { status: 'offline' };
 
 /** A freshly-created player still carries a generated `player_xxxxxxxx` handle to rename. */
 export function needsHandle(player: AuthPlayer): boolean {
@@ -51,10 +61,16 @@ interface AuthState {
   dismissFirstStory: (start: boolean) => void;
   /** Stories consumed the "Start a story" intent (create flow launched) — clear it. */
   clearPendingStart: () => void;
-  /** Cold-start restore: refresh-token → new access → player. Signs out if the token is stale. */
+  /**
+   * Cold-start restore: refresh-token → new access → player. A rejected token signs out; a network
+   * failure keeps the session and restores identity from the player cache (authed offline).
+   */
   hydrate: () => Promise<void>;
-  /** Rotate the tokens; returns a fresh access token, or null if refresh failed (→ signed out). */
-  refresh: () => Promise<string | null>;
+  /**
+   * Rotate the tokens. `refreshed` → fresh access token; `invalid` → token rejected (signed out);
+   * `offline` → transient/network failure, session KEPT for retry. Only `invalid` signs out.
+   */
+  refresh: () => Promise<RefreshResult>;
   /** Revoke + clear everything, go anon. */
   signOut: () => Promise<void>;
 }
@@ -80,10 +96,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signIn: async ({ access_token, refresh_token, player }) => {
     await SecureStore.setItemAsync(REFRESH_KEY, refresh_token);
+    await savePlayer(player); // non-secret identity, for offline cold start
     set({ accessToken: access_token, refreshToken: refresh_token, player, status: 'authed' });
   },
 
-  completeHandlePick: (player) => set({ player, justOnboarded: true }),
+  completeHandlePick: (player) => {
+    void savePlayer(player); // keep the offline-identity cache in sync with the new handle
+    set({ player, justOnboarded: true });
+  },
 
   dismissFirstStory: (start) => set({ justOnboarded: false, pendingStart: start }),
 
@@ -96,29 +116,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
     set({ refreshToken: stored });
-    const access = await get().refresh(); // rotates + persists; signs out on failure
-    if (!access) return;
-    try {
-      set({ player: await authApi.me(access), status: 'authed' });
-    } catch {
-      await get().signOut();
+    const result = await get().refresh();
+    if (result.status === 'invalid') return; // token rejected → already signed out (anon)
+    if (result.status === 'refreshed') {
+      try {
+        const me = await authApi.me(result.accessToken);
+        await savePlayer(me);
+        set({ player: me, status: 'authed' });
+        return;
+      } catch (err) {
+        if (isAuthRejection(err)) {
+          await get().signOut();
+          return;
+        }
+        // network failure on /me — we still hold a valid access token; fall through to offline restore
+      }
     }
+    // Offline (refresh or /me failed on the network): restore identity from cache, KEEP the token,
+    // stay authed offline. Reconnect warms the access token (network.ts) or the next 401 refresh does.
+    const cached = await loadPlayer();
+    if (cached) set({ player: cached, status: 'authed' });
+    else set({ status: 'anon' }); // no cached identity; token kept for a later online launch
   },
 
   refresh: async () => {
     const rt = get().refreshToken;
     if (!rt) {
       set({ status: 'anon' });
-      return null;
+      return { status: 'invalid' };
     }
     try {
       const { access_token, refresh_token } = await authApi.refresh(rt);
       await SecureStore.setItemAsync(REFRESH_KEY, refresh_token);
       set({ accessToken: access_token, refreshToken: refresh_token });
-      return access_token;
-    } catch {
-      await get().signOut();
-      return null;
+      return { status: 'refreshed', accessToken: access_token };
+    } catch (err) {
+      if (isAuthRejection(err)) {
+        await get().signOut(); // token truly rejected (401/403)
+        return { status: 'invalid' };
+      }
+      return { status: 'offline' }; // network / 5xx — keep the token + session, retry later
     }
   },
 
@@ -132,6 +169,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     await SecureStore.deleteItemAsync(REFRESH_KEY);
+    await clearPlayer();
     set({
       accessToken: null,
       refreshToken: null,

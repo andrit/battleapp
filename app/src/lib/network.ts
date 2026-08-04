@@ -10,6 +10,8 @@ import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { onlineManager } from '@tanstack/react-query';
 import { create } from 'zustand';
 
+import { useAuthStore } from '../state/authStore';
+
 /**
  * "Online" = a connection exists AND the internet is reachable. `isInternetReachable` is `null` until
  * NetInfo finishes probing, so unknown is treated as online — avoids a false-offline flash at launch.
@@ -32,11 +34,19 @@ export const useNetworkStore = create<NetworkStore>(() => ({ online: true }));
  * listener), so this is meant to be called once from `App` on mount.
  */
 export function startNetworkMonitoring(): void {
+  let wasOnline = true; // seeded true so the first emission doesn't count as a "reconnect"
   onlineManager.setEventListener((setOnline) =>
     NetInfo.addEventListener((state) => {
       const online = isOnlineState(state);
       setOnline(online); // React Query: pause/resume queries + mutations
       useNetworkStore.setState({ online }); // UI: the offline banner
+      // Reconnected while authed but running offline (no access token) → warm the session so writes
+      // work again. hydrate/api-401 also cover this; this makes it proactive.
+      if (online && !wasOnline) {
+        const auth = useAuthStore.getState();
+        if (auth.status === 'authed' && !auth.accessToken) void auth.refresh();
+      }
+      wasOnline = online;
     }),
   );
 }

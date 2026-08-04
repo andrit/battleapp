@@ -18,8 +18,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Attach the current access token; on a 401 do one silent refresh + retry (sign-out-on-401 is
-  // handled inside authStore.refresh — a failed refresh clears the session and returns null).
+  // Attach the current access token; on a 401 do one silent refresh + retry. A rejected token signs
+  // out inside authStore.refresh ('invalid'); an offline/transient refresh keeps the session — either
+  // way we don't retry and the 401 surfaces.
   const doFetch = (): Promise<Response> => {
     const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
     // Only declare a JSON body when there is one — Fastify 400s on
@@ -32,8 +33,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   let res = await doFetch();
   if (res.status === 401 && useAuthStore.getState().refreshToken) {
-    const fresh = await useAuthStore.getState().refresh();
-    if (fresh) res = await doFetch(); // retry once with the rotated token
+    const result = await useAuthStore.getState().refresh();
+    if (result.status === 'refreshed') res = await doFetch(); // retry once with the rotated token
   }
 
   const body: unknown = await res.json();
