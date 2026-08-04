@@ -4,11 +4,12 @@
  * opponent's turn appears without a refetch. The connection lifecycle is tied to the Story
  * screen's mount, and status is mirrored into useStoryStore.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { BASE_URL, type StoryWithTurns } from './api';
 import { keys } from './queries';
+import { useIsOnline } from './network';
 import { useStoryStore } from '../state/storyStore';
 import type { Turn } from '../domain/types';
 
@@ -35,16 +36,33 @@ export function patchStoryWithTurn(qc: QueryClient, storyId: string, turn: Turn)
   });
 }
 
-/** Open a WebSocket for the story on mount, patch the cache on TurnAdded, close on unmount. */
+/**
+ * Open a WebSocket for the story on mount; patch the cache on TurnAdded; close on unmount. Tied to
+ * connectivity (Phase 6): while offline we hold no socket, and when the network returns we **reconnect
+ * and catch up** by invalidating the story — the socket only carries *live* events, so turns published
+ * while it was down need a refetch. (React Query's refetchOnReconnect also refetches active queries;
+ * this additionally covers a socket-only drop.)
+ */
 export function useStoryWebSocket(storyId: string): void {
   const qc = useQueryClient();
   const setWsStatus = useStoryStore((s) => s.setWsStatus);
+  const online = useIsOnline();
+  const hasConnected = useRef(false);
 
   useEffect(() => {
+    if (!online) {
+      setWsStatus('disconnected'); // no socket while offline; reconnect happens when back online
+      return;
+    }
     setWsStatus('connecting');
     const ws = new WebSocket(storyWsUrl(storyId));
 
-    ws.onopen = () => setWsStatus('connected');
+    ws.onopen = () => {
+      setWsStatus('connected');
+      // On a RECONNECT (not the first open), catch up on turns published while the socket was down.
+      if (hasConnected.current) void qc.invalidateQueries({ queryKey: keys.story(storyId) });
+      hasConnected.current = true;
+    };
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(String(event.data)) as WsEvent;
@@ -60,5 +78,5 @@ export function useStoryWebSocket(storyId: string): void {
     return () => {
       ws.close();
     };
-  }, [storyId, qc, setWsStatus]);
+  }, [storyId, qc, setWsStatus, online]);
 }

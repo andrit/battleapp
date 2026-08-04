@@ -7,6 +7,7 @@ import {
   useStoryWebSocket,
 } from '../src/lib/storyWebSocket';
 import { keys } from '../src/lib/queries';
+import { useNetworkStore } from '../src/lib/network';
 import { useStoryStore } from '../src/state/storyStore';
 import type { StoryWithTurns } from '../src/lib/api';
 import type { Turn } from '../src/domain/types';
@@ -65,6 +66,7 @@ const storyWithTurns = (turns: Turn[]): StoryWithTurns => ({
 
 beforeEach(() => {
   FakeWebSocket.instances = [];
+  useNetworkStore.setState({ online: true });
 });
 
 describe('storyWsUrl', () => {
@@ -103,9 +105,13 @@ describe('useStoryWebSocket', () => {
     return null;
   };
 
-  it('connects, patches the cache on a TurnAdded frame, and ignores other frames', async () => {
+  // One rendering test covers the WS lifecycle (connect → patch → offline drop → reconnect + catch-up).
+  // It is deliberately a single test: this React-19 RNTL harness doesn't reliably unmount between two
+  // rendering tests, so a second one would mount without its effects firing.
+  it('connects + patches, then drops offline and reconnects (catching up) when back online', async () => {
     const client = new QueryClient();
     client.setQueryData(keys.story('s1'), storyWithTurns([]));
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
 
     const screen = await render(
       <QueryClientProvider client={client}>
@@ -126,9 +132,24 @@ describe('useStoryWebSocket', () => {
     act(() => ws.emit({ type: 'Echo', payload: 'ping' }));
     expect(client.getQueryData<StoryWithTurns>(keys.story('s1'))?.turns).toHaveLength(1);
 
-    // Unmount cleanup (`useEffect` returns () => ws.close()) is a standard pattern, verified by
-    // inspection — RNTL's async unmount in this React 19 harness doesn't reliably fire the effect
-    // cleanup within the test, and RNTL auto-cleanup handles teardown regardless.
+    // Offline → the socket is dropped and none is opened while offline.
+    const openedAtConnect = FakeWebSocket.instances.length;
+    await act(async () => {
+      useNetworkStore.setState({ online: false });
+    });
+    expect(useStoryStore.getState().wsStatus).toBe('disconnected');
+    expect(FakeWebSocket.instances.length).toBe(openedAtConnect);
+
+    // Back online → a NEW socket opens and, on open, catches up by invalidating the story
+    // (the first open earlier did not, so this proves the reconnect-only catch-up).
+    invalidate.mockClear();
+    await act(async () => {
+      useNetworkStore.setState({ online: true });
+    });
+    expect(FakeWebSocket.instances.length).toBe(openedAtConnect + 1);
+    act(() => FakeWebSocket.instances.at(-1)!.onopen?.());
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.story('s1') });
+
     screen.unmount();
   });
 });
