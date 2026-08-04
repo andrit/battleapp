@@ -5,6 +5,7 @@ import { createInProcessNotifier, type Notifier } from './notify.js';
 import { createRepos, type Repos } from './repos/index.js';
 import { createAiService, type AiService } from './ai/service.js';
 import { boundedViewFor, HintLedger, isTurnStalled } from './ai/director.js';
+import { advanceTurn } from './domain/turn-policy.js';
 import { createRemoteOidcConfig, isProvider, verifyIdToken, type OidcConfig } from './auth/oidc.js';
 import {
   createRefreshToken,
@@ -232,6 +233,8 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
       }
       // Optimistic-concurrency token (Phase 6): the client sends the sequence its turn should occupy;
       // if the slot moved on (e.g. the AI stepped in, or a stale offline replay), append returns 'stale'.
+      // Forward-compat: this derived sequence IS the turn epoch a future claim mode will arbitrate on
+      // (graduates to a stored `turn_token` column then) — see domain/turn-policy.ts + the decision doc.
       const expectedSequence = typeof req.body?.token === 'number' ? req.body.token : undefined;
       const turn = await repos.turns.append(req.params.id, author.id, content, expectedSequence);
       if (turn === null) {
@@ -242,10 +245,9 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         reply.code(409);
         return { error: 'turn_moved_on' };
       }
-      // Activate the story and hand the turn to the OTHER participant (alternation). With a single
-      // participant (solo dev testing) it stays the author's turn so the loop still continues.
-      const other = story.participants.find((p) => p.player_id !== author.id);
-      await repos.stories.setActiveAuthor(req.params.id, other?.player_id ?? author.id);
+      // Hand the turn to the next author via the turn-advance policy (round_robin in V1; claim/queue
+      // modes slot in behind this seam later — see domain/turn-policy.ts). Solo stays the author's turn.
+      await repos.stories.setActiveAuthor(req.params.id, advanceTurn(story, author.id));
       notifier.publish(req.params.id, { type: 'TurnAdded', payload: turn });
       reply.code(201);
       return turn;
