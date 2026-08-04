@@ -59,6 +59,11 @@ incidental toggle.
 
 ## The sanctioned bridge — Designated-leader / claim mode
 
+**Status: SCHEDULED for V2** (designer decision 2026-08-04; on the roadmap in
+`docs/product-development/sdlc.md`), downstream of invites → multi-author. **Activation: 3+ authors
+only** — with two authors, claim is just round-robin ping-pong, so a `turn_mode='claim'` story behaves
+as round-robin until a third author joins.
+
 Between round-robin and free-for-all sits a mode that keeps everything simple while adding
 competitive, chaotic fun: **the next writer is chosen dynamically, but there is still exactly one
 writer at a time.** The "leader" (pen-holder) is designated by who **claims** the open slot

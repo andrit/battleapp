@@ -25,6 +25,25 @@ wrong and is corrected as follows** (per `game-mechanics.md` §0):
 > fill-in is the one named carve-out, and Pure-Human Mode disables it. What stays out of V1 is
 > the **AI Partner play mode**. "No genres, no roguelike seeds" still stands.
 
+## Post-V1 roadmap — multi-author & turn modes (scheduled, designer decision 2026-08-04)
+
+Two related expansions beyond V1's two-author stories are **committed** (target **V2**) so work can be
+steered toward them. They are **not** V1 scope.
+
+- **Multi-author (2 → N)** — stories with 3+ authors via **round-robin over N** (turn order = join
+  order). Depends on invites supporting 3+. The domain is already N-ready (`participants` array, single
+  `current_author_id`, per-turn `author_id`); the only exactly-2 spots to change are documented in
+  `docs/engineering/decision-multi-author-forward-compat.md`.
+- **Designated-leader / claim mode** — the dynamic **"my turn now"** turn-selection policy
+  (grab-the-pen / queue): single-writer preserved, server-arbitrated, no CRDT, with the anti-hog
+  cooldown. **Engages only at 3+ authors** — with two authors it is just round-robin ping-pong, so a
+  `turn_mode='claim'` story behaves as round-robin until a third author joins. Needs a stored
+  `turn_token` epoch (the one piece the V1 derived-sequence token does not cover).
+
+**Dependency chain to judge against:** invites (Phase 4) → **multi-author round-robin** → **claim mode
+(3+)**. The V1 work already lays cheap forward-compat guardrails — turn-advance as a policy seam and a
+derived turn token that upgrades to the stored epoch — per the decision doc above.
+
 ## Phase sequence
 
 | Phase | Name | AI-nesting note |
