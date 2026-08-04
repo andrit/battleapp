@@ -150,7 +150,6 @@ export default function StoriesScreen() {
     return <StoriesError onRetry={() => void stories.refetch()} />;
   }
 
-  const offline = stories.isError; // stale cache shown after a failed refetch
   const firstRun = raw.length === 0;
   const visible = groupStories(
     raw.filter((s) => matchesFilter(s, filter, meId)),
@@ -161,12 +160,6 @@ export default function StoriesScreen() {
 
   return (
     <View style={styles.screen}>
-      {offline && (
-        <View testID="offline-banner" style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>Offline — showing your saved stories.</Text>
-        </View>
-      )}
-
       {firstRun ? (
         <FirstRunEmpty onStart={onStart} pending={create.isPending} />
       ) : (
@@ -432,13 +425,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.appBg },
   centered: { alignItems: 'center', justifyContent: 'center', gap: space[2], padding: space[6] },
   listContent: { padding: space[4], gap: space[2] },
-
-  offlineBanner: {
-    backgroundColor: '#FBEFD9',
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-  },
-  offlineText: { ...type.caption, color: color.ink700 },
 
   card: {
     backgroundColor: color.surface,

@@ -67,17 +67,10 @@ export default function StoryScreen({ route, navigation }: Props) {
     return <StoryError onRetry={() => void story.refetch()} />;
   }
 
-  // We have data (fresh or stale cache). A failed refetch over existing cache → offline banner.
-  const offline = story.isError;
   const openToCompose = () => navigation.navigate('Compose', { id });
 
   return (
     <View style={styles.screen}>
-      {offline && (
-        <View testID="offline-banner" style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>Offline — showing your saved story.</Text>
-        </View>
-      )}
       <StoryBody data={data} meId={meId} paper={paper} onOpenCompose={openToCompose} />
       <BottomBar
         data={data}
@@ -293,12 +286,6 @@ const styles = StyleSheet.create({
   centered: { alignItems: 'center', justifyContent: 'center', gap: space[3], padding: space[6] },
   scrollContent: { padding: space[4] },
 
-  offlineBanner: {
-    backgroundColor: '#FBEFD9',
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-  },
-  offlineText: { ...type.caption, color: color.ink700 },
   aaButton: { ...type.heading, color: color.primary, paddingHorizontal: space[2] },
 
   // Empty (lobby) + error

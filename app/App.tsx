@@ -1,16 +1,19 @@
 import { useCallback, useEffect } from 'react';
 import { View } from 'react-native';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
 import RootNavigator from './src/navigation/RootNavigator';
-import { createQueryClient } from './src/lib/queryClient';
-import { primeStoriesCache, subscribeStoriesWriteThrough } from './src/lib/storiesCache';
+import { OfflineBanner } from './src/components/OfflineBanner';
+import { createQueryClient, createCachePersister, CACHE_MAX_AGE, CACHE_BUSTER } from './src/lib/queryClient';
+import { startNetworkMonitoring } from './src/lib/network';
 import { useAppFonts } from './src/theme/fonts';
 import { useAuthStore } from './src/state/authStore';
 
 const queryClient = createQueryClient();
+const persister = createCachePersister();
 
 // Keep the splash visible until the story font (Lora) is ready, so the reading
 // surface never flashes in an unstyled serif fallback. Failures are non-fatal.
@@ -20,12 +23,11 @@ export default function App() {
   const [fontsLoaded, fontError] = useAppFonts();
 
   useEffect(() => {
-    // Offline B2: seed the stories list from AsyncStorage, then keep the mirror current.
-    void primeStoriesCache(queryClient);
+    // Bridge real connectivity → React Query (pause/resume) + the offline banner store.
+    startNetworkMonitoring();
     // Restore any persisted session (refresh token → access + player). Drives the auth gate:
     // status starts 'loading', then resolves to 'authed' or 'anon'.
     void useAuthStore.getState().hydrate();
-    return subscribeStoriesWriteThrough(queryClient);
   }, []);
 
   // Hide the splash once fonts resolve (loaded or errored — we render either way).
@@ -40,11 +42,21 @@ export default function App() {
   }
 
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <QueryClientProvider client={queryClient}>
-        <RootNavigator />
-        <StatusBar style="auto" />
-      </QueryClientProvider>
-    </View>
+    <SafeAreaProvider>
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{ persister, maxAge: CACHE_MAX_AGE, buster: CACHE_BUSTER }}
+          // After the cache restores, replay any writes that were queued while offline (Phase 6 task 4).
+          onSuccess={() => {
+            void queryClient.resumePausedMutations();
+          }}
+        >
+          <OfflineBanner />
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </PersistQueryClientProvider>
+      </View>
+    </SafeAreaProvider>
   );
 }
