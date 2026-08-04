@@ -1,7 +1,9 @@
 # 001 — Phase 5: on-device verification of real OAuth + First-story flow
 
-**Opened:** 2026-08-02 · **Phase:** 5 (Auth & Secure Storage) · **Status:** IN PROGRESS — Google
-sign-in verified on device 2026-08-03; the secure-storage / session criteria below remain.
+**Opened:** 2026-08-02 · **Phase:** 5 (Auth & Secure Storage) · **Status:** ADVANCE CRITERIA MET —
+all four Phase-5 advance criteria verified on device (2026-08-03/04): Keychain-not-AsyncStorage,
+cold-start → app, sign-out clears tokens, silent mid-session refresh. Remaining items below
+(new-account onboarding, two-device alternation) are **extra coverage**, not advance criteria.
 
 ## Why this needs a human + a device
 
@@ -37,11 +39,15 @@ See `docs/engineering/social-signin-setup.md` (runbook + problem log) for the fu
 - [x] Refresh token is stored in **SecureStore/Keychain**, confirmed **NOT** in AsyncStorage.
       *Verified on device 2026-08-03 (Profile dev audit: AsyncStorage keys = `battleapp.prefs` +
       `battleapp.cache.stories` only; token round-trips SecureStore; no AsyncStorage entry holds it).*
-- [ ] Token refresh happens **without** the user seeing a sign-in screen (silent refresh).
+- [x] Token refresh happens **without** the user seeing a sign-in screen (silent refresh). *Verified
+      on device 2026-08-04 (dev probe: bogus in-memory access token → GET /me 401 → api.ts silently
+      refreshed + retried → stayed signed in with a fresh access token, no Welcome bounce).*
 - [x] **Cold start** with a valid session goes **straight to the app** — no Welcome, and the
       First-story prompt does **not** re-appear (it's one-time). *Verified on device 2026-08-04
       (force-stopped + relaunched while signed in → landed on the Stories tab).*
-- [ ] **Sign out** clears all stored tokens and returns to Welcome.
+- [x] **Sign out** clears all stored tokens and returns to Welcome. *Verified on device 2026-08-04
+      (Profile → Sign out → Welcome; a subsequent cold start stayed on Welcome, i.e. the SecureStore
+      refresh token was wiped, not just the navigation).*
 - [ ] Two devices (Dev: Alice / Dev: Bob, or two real Google accounts) → join + turn alternation.
 
 ## Notes
