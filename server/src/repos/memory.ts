@@ -147,16 +147,23 @@ class MemoryTurnRepo implements TurnRepo {
 
   constructor(private readonly stories: MemoryStoryRepo) {}
 
-  async append(storyId: string, authorId: string, content: string): Promise<Turn | null> {
+  async append(
+    storyId: string,
+    authorId: string,
+    content: string,
+    expectedSequence?: number,
+  ): Promise<Turn | null | 'stale'> {
     if (!(await this.stories.findById(storyId))) return null;
     const list = this.byStory.get(storyId) ?? [];
+    const nextSequence = list.length + 1;
+    if (expectedSequence !== undefined && expectedSequence !== nextSequence) return 'stale';
     const turn: Turn = {
       id: randomUUID(),
       story_id: storyId,
       author_id: authorId,
       author_type: 'human',
       content,
-      sequence_number: list.length + 1,
+      sequence_number: nextSequence,
       moderation_status: 'passed',
       supersedes: null,
       created_at: now(),

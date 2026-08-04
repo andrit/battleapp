@@ -137,6 +137,52 @@ describe('POST /stories/:id/turns', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('accepts a turn whose token matches the next sequence', async () => {
+    const story = await newStory();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
+      payload: { content: 'Matches the next slot.', token: 1 },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().sequence_number).toBe(1);
+  });
+
+  it('409s a stale token — the slot moved on (turn_moved_on)', async () => {
+    const story = await newStory();
+    // The first turn occupies sequence 1 (solo → still the author's turn afterwards).
+    const first = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
+      payload: { content: 'The opening line.', token: 1 },
+    });
+    expect(first.statusCode).toBe(201);
+    // A stale offline replay still thinks it is writing sequence 1.
+    const stale = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(token),
+      payload: { content: 'A stale offline turn.', token: 1 },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toBe('turn_moved_on');
+  });
+
+  it('403s a non-participant trying to write', async () => {
+    const story = await newStory();
+    const outsider = await devToken('outsider');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(outsider),
+      payload: { content: 'I was not invited.' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('not_a_participant');
+  });
 });
 
 describe('join + turn alternation (two players)', () => {
@@ -175,6 +221,29 @@ describe('join + turn alternation (two players)', () => {
     });
     s = (await app.inject({ method: 'GET', url: `/stories/${story.id}` })).json();
     expect(s.current_author_id).toBe(aliceId);
+  });
+
+  it('409s a turn taken out of turn (not_your_turn)', async () => {
+    const alice = await devToken('alice');
+    const bob = await devToken('bob');
+    const story = (await app.inject({ method: 'POST', url: '/stories', headers: bearer(alice) })).json();
+    await app.inject({ method: 'POST', url: `/stories/${story.id}/join`, headers: bearer(bob) });
+    // Alice writes the opening line → the turn passes to Bob.
+    await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(alice),
+      payload: { content: 'Alice opens.' },
+    });
+    // Alice tries again, but it is Bob's turn now.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/stories/${story.id}/turns`,
+      headers: bearer(alice),
+      payload: { content: 'Alice jumps the queue.' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('not_your_turn');
   });
 
   it('409s a join when the story already has two authors', async () => {

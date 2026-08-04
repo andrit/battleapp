@@ -35,8 +35,17 @@ export interface StoryRepo {
 }
 
 export interface TurnRepo {
-  /** Append a human turn; returns null if the story does not exist. Assigns sequence_number. */
-  append(storyId: string, authorId: string, content: string): Promise<Turn | null>;
+  /**
+   * Append a human turn (assigns sequence_number). Returns `null` if the story does not exist, or
+   * `'stale'` when `expectedSequence` is given and no longer matches the next sequence — the
+   * optimistic-concurrency guard that rejects a stale offline turn on replay ("the turn moved on").
+   */
+  append(
+    storyId: string,
+    authorId: string,
+    content: string,
+    expectedSequence?: number,
+  ): Promise<Turn | null | 'stale'>;
   listByStory(storyId: string): Promise<Turn[]>;
 }
 

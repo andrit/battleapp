@@ -172,18 +172,28 @@ class PgStoryRepo implements StoryRepo {
 class PgTurnRepo implements TurnRepo {
   constructor(private readonly sql: Sql) {}
 
-  async append(storyId: string, authorId: string, content: string): Promise<Turn | null> {
+  async append(
+    storyId: string,
+    authorId: string,
+    content: string,
+    expectedSequence?: number,
+  ): Promise<Turn | null | 'stale'> {
     if (!isUuid(storyId)) return null;
     const [exists] = await this.sql`SELECT 1 FROM stories WHERE id = ${storyId}`;
     if (!exists) return null;
     // ponytail: sequence_number via MAX+1 can race under concurrent appends to one story; the
     // UNIQUE(story_id, sequence_number) constraint is the backstop. ceiling: real concurrency.
     // upgrade: retry-on-unique-violation or a per-story advisory lock. Fine for V1 (alternating).
+    // The WHERE guards the optimistic-concurrency token: when expectedSequence is provided and no
+    // longer matches the next sequence, no row is inserted → 'stale'.
+    const expected = expectedSequence ?? null;
     const [row] = await this.sql`
       INSERT INTO turns (story_id, author_id, author_type, content, sequence_number)
-      VALUES (${storyId}, ${authorId}, 'human', ${content},
-        (SELECT COALESCE(MAX(sequence_number), 0) + 1 FROM turns WHERE story_id = ${storyId}))
+      SELECT ${storyId}, ${authorId}, 'human', ${content}, next.n
+      FROM (SELECT COALESCE(MAX(sequence_number), 0) + 1 AS n FROM turns WHERE story_id = ${storyId}) next
+      WHERE ${expected}::int IS NULL OR next.n = ${expected}::int
       RETURNING *`;
+    if (!row) return 'stale'; // story exists (checked above) but the sequence guard failed
     return mapTurn(row);
   }
 

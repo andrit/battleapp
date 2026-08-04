@@ -189,7 +189,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return { ...story, turns };
   });
 
-  app.post<{ Params: { id: string }; Body: { content?: string } }>(
+  app.post<{ Params: { id: string }; Body: { content?: string; token?: number } }>(
     '/stories/:id/turns',
     async (req, reply) => {
       const content = req.body?.content;
@@ -201,6 +201,21 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
       if (!author) {
         reply.code(401);
         return { error: 'unauthorized' };
+      }
+      // Turn-gating: the author must be a participant, and once the story is active it must be their
+      // turn. A lobby story has current_author_id null — any participant may write the opening line.
+      const story = await repos.stories.findById(req.params.id);
+      if (!story) {
+        reply.code(404);
+        return { error: 'story_not_found' };
+      }
+      if (!story.participants.some((p) => p.player_id === author.id)) {
+        reply.code(403);
+        return { error: 'not_a_participant' };
+      }
+      if (story.current_author_id && story.current_author_id !== author.id) {
+        reply.code(409);
+        return { error: 'not_your_turn' };
       }
       // Moderation hook (ai-service-layer §4.1): every SubmitTurn is screened before storage.
       // Fail-closed — only passed content becomes a Turn; a moderation failure never stores.
@@ -215,15 +230,21 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
         reply.code(422);
         return { error: 'moderation_rejected', reason: verdict.reason };
       }
-      const turn = await repos.turns.append(req.params.id, author.id, content);
-      if (!turn) {
+      // Optimistic-concurrency token (Phase 6): the client sends the sequence its turn should occupy;
+      // if the slot moved on (e.g. the AI stepped in, or a stale offline replay), append returns 'stale'.
+      const expectedSequence = typeof req.body?.token === 'number' ? req.body.token : undefined;
+      const turn = await repos.turns.append(req.params.id, author.id, content, expectedSequence);
+      if (turn === null) {
         reply.code(404);
         return { error: 'story_not_found' };
       }
+      if (turn === 'stale') {
+        reply.code(409);
+        return { error: 'turn_moved_on' };
+      }
       // Activate the story and hand the turn to the OTHER participant (alternation). With a single
       // participant (solo dev testing) it stays the author's turn so the loop still continues.
-      const story = await repos.stories.findById(req.params.id);
-      const other = story?.participants.find((p) => p.player_id !== author.id);
+      const other = story.participants.find((p) => p.player_id !== author.id);
       await repos.stories.setActiveAuthor(req.params.id, other?.player_id ?? author.id);
       notifier.publish(req.params.id, { type: 'TurnAdded', payload: turn });
       reply.code(201);
