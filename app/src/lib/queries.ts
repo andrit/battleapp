@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { api, type StoryWithTurns } from './api';
 import { useAuthStore } from '../state/authStore';
@@ -64,16 +64,33 @@ interface OptimisticContext {
   previous: StoryWithTurns | undefined;
 }
 
+/** Variables for the submit-turn mutation. `token` = the sequence the turn should occupy (the server
+ *  rejects a stale one with 409). storyId is in the variables so the persisted/resumed mutation is
+ *  self-contained. */
+export interface SubmitTurnVars {
+  storyId: string;
+  content: string;
+  token: number;
+}
+
+const SUBMIT_TURN_KEY = ['submitTurn'] as const;
+
 /**
- * Submit a turn with an optimistic Section (branch B5 from task-flow.md): the turn appears in
- * the scroll immediately, and on error it rolls back. The component keeps the draft on error
- * (clears it only on success), which is the "returns to the draft box + retry" half of B5.
+ * Register the submit-turn mutation **defaults** on the query client. A turn submitted while OFFLINE
+ * is paused and persisted (Phase 6 task 2); its `mutationFn` and optimistic/rollback/reconcile logic
+ * can't be persisted as closures, so they're registered here by key and re-used when
+ * `resumePausedMutations()` replays the turn after a reconnect or app restart (branch B5 of
+ * task-flow.md, now offline-durable). Call once at startup, before `PersistQueryClientProvider`.
+ * UI feedback (the ack + closing the modal) stays a per-call `onSuccess` in the component.
  */
-export function useSubmitTurn(storyId: string) {
-  const qc = useQueryClient();
-  return useMutation<Turn, Error, string, OptimisticContext>({
-    mutationFn: (content) => api.submitTurn(storyId, content),
-    onMutate: async (content) => {
+export function registerMutationDefaults(qc: QueryClient): void {
+  qc.setMutationDefaults(SUBMIT_TURN_KEY, {
+    mutationFn: (vars) => {
+      const { storyId, content, token } = vars as unknown as SubmitTurnVars;
+      return api.submitTurn(storyId, content, token);
+    },
+    onMutate: async (vars) => {
+      const { storyId, content } = vars as unknown as SubmitTurnVars;
       await qc.cancelQueries({ queryKey: keys.story(storyId) });
       const previous = qc.getQueryData<StoryWithTurns>(keys.story(storyId));
       if (previous) {
@@ -95,13 +112,24 @@ export function useSubmitTurn(storyId: string) {
       }
       return { previous };
     },
-    onError: (_err, _content, context) => {
-      // Roll the optimistic Section back; the draft is preserved in the component for retry.
-      if (context?.previous) qc.setQueryData(keys.story(storyId), context.previous);
+    onError: (_err, vars, context) => {
+      // Roll the optimistic Section back. A 409 (stale/not-your-turn) is handled for the draft in the
+      // component; the cache rollback is the same either way.
+      const { storyId } = vars as unknown as SubmitTurnVars;
+      const ctx = context as OptimisticContext | undefined;
+      if (ctx?.previous) qc.setQueryData(keys.story(storyId), ctx.previous);
     },
-    onSettled: () => {
-      // Reconcile with the server (the real Turn, real sequence number).
+    onSettled: (_data, _err, vars) => {
+      const { storyId } = vars as unknown as SubmitTurnVars;
       void qc.invalidateQueries({ queryKey: keys.story(storyId) });
     },
   });
+}
+
+/**
+ * Submit a turn (optimistic B5). Uses the registered defaults (above) so an offline submit queues
+ * and replays on reconnect/restart. The caller passes `{ storyId, content, token }`.
+ */
+export function useSubmitTurn() {
+  return useMutation<Turn, Error, SubmitTurnVars, OptimisticContext>({ mutationKey: SUBMIT_TURN_KEY });
 }

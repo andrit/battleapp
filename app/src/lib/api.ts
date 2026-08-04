@@ -68,10 +68,11 @@ export const api = {
   joinStory: (id: string) => request<Story>(`/stories/${id}/join`, { method: 'POST' }),
   /** Stall-gated director hint; `hint` is null when none applies (never an error). */
   directorHint: (id: string) => request<{ hint: string | null }>(`/stories/${id}/director-hint`),
-  submitTurn: (id: string, content: string) =>
+  /** `token` = the sequence the turn should occupy (optimistic-concurrency; server 409s if stale). */
+  submitTurn: (id: string, content: string, token?: number) =>
     request<Turn>(`/stories/${id}/turns`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(token === undefined ? { content } : { content, token }),
     }),
 };
 

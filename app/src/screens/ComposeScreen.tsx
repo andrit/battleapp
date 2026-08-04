@@ -27,6 +27,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useDirectorHint, useStory, useSubmitTurn } from '../lib/queries';
+import { ApiError } from '../lib/api';
+import { useIsOnline } from '../lib/network';
 import { analytics } from '../lib/analytics';
 import { usePreferencesStore } from '../state/preferencesStore';
 import { paperColor } from '../theme/reading';
@@ -41,7 +43,8 @@ const ACK_MS = 900; // how long the coral "Turn posted" ack shows before the mod
 export default function ComposeScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const story = useStory(id);
-  const submit = useSubmitTurn(id);
+  const submit = useSubmitTurn();
+  const online = useIsOnline();
   const hint = useDirectorHint(id);
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
@@ -49,7 +52,7 @@ export default function ComposeScreen({ route, navigation }: Props) {
   const paper = usePreferencesStore((s) => s.reading.paper);
   const [draft, setDraft] = useState('');
   const [hintDismissed, setHintDismissed] = useState(false);
-  const [posted, setPosted] = useState(false);
+  const [ack, setAck] = useState<'posted' | 'queued' | null>(null);
 
   // The post-success ack timer that closes the modal; cleared on unmount so it never fires
   // goBack() on an already-dismissed screen (and never lingers as an open handle).
@@ -63,7 +66,9 @@ export default function ComposeScreen({ route, navigation }: Props) {
 
   const trimmed = draft.trim();
   const over = draft.length > CHAR_LIMIT;
-  const canSubmit = trimmed.length > 0 && !over && !submit.isPending && !posted;
+  const canSubmit = trimmed.length > 0 && !over && !submit.isPending && !ack;
+  // A 409 means the slot moved on (AI stepped in / not your turn) — a retry won't help.
+  const staleRejection = submit.error instanceof ApiError && submit.error.status === 409;
 
   const lastTurn = story.data?.turns.at(-1) ?? null;
   const hintText = !hintDismissed ? (hint.data?.hint ?? null) : null;
@@ -84,17 +89,31 @@ export default function ComposeScreen({ route, navigation }: Props) {
 
   const onSubmit = useCallback(() => {
     if (!canSubmit) return;
-    submit.mutate(trimmed, {
-      onSuccess: () => {
-        analytics.turnSubmitted(id);
-        // Coral acknowledgement (screen-states: "the human acted"), then close back to Story View.
-        setPosted(true);
-        setDraft('');
-        closeTimer.current = setTimeout(() => navigation.goBack(), ACK_MS);
+    // The sequence this turn should occupy = server turn count + 1 (optimistic-concurrency token).
+    const token = (story.data?.turns.length ?? 0) + 1;
+    const ackAndClose = (kind: 'posted' | 'queued') => {
+      setAck(kind);
+      setDraft('');
+      closeTimer.current = setTimeout(() => navigation.goBack(), ACK_MS);
+    };
+    submit.mutate(
+      { storyId: id, content: trimmed, token },
+      {
+        onSuccess: () => {
+          analytics.turnSubmitted(id);
+          ackAndClose('posted'); // coral "Turn posted ✓", then back to Story View
+        },
+        onError: (err) => {
+          // 409 = stale / not-your-turn → drop the draft (a retry won't help); the optimistic
+          // rollback lives in the mutation defaults. A transient error keeps the draft to retry.
+          if (err instanceof ApiError && err.status === 409) setDraft('');
+        },
       },
-      // Error path is B5: useSubmitTurn rolls the optimistic Section back; the draft stays here.
-    });
-  }, [canSubmit, submit, trimmed, id, navigation]);
+    );
+    // Offline: the mutation pauses (onSuccess won't fire) — acknowledge it's queued and close; the
+    // optimistic Section stands in until resumePausedMutations posts it on reconnect.
+    if (!online) ackAndClose('queued');
+  }, [canSubmit, submit, trimmed, story.data, id, navigation, online]);
 
   return (
     <KeyboardAvoidingView
@@ -133,7 +152,9 @@ export default function ComposeScreen({ route, navigation }: Props) {
 
         {submit.isError && (
           <Text testID="submit-error" style={styles.error}>
-            {"Couldn't post — tap Submit to retry."}
+            {staleRejection
+              ? 'This story moved on — your turn was skipped.'
+              : "Couldn't post — tap Submit to retry."}
           </Text>
         )}
 
@@ -168,10 +189,12 @@ export default function ComposeScreen({ route, navigation }: Props) {
         <View style={{ height: insets.bottom }} />
       </View>
 
-      {posted && (
+      {ack && (
         <View testID="posted-ack" style={styles.ackWrap} pointerEvents="none">
           <View style={styles.ackToast}>
-            <Text style={styles.ackText}>Turn posted ✓</Text>
+            <Text style={styles.ackText}>
+              {ack === 'queued' ? 'Queued — will post when back online' : 'Turn posted ✓'}
+            </Text>
           </View>
         </View>
       )}

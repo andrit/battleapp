@@ -8,11 +8,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import RootNavigator from './src/navigation/RootNavigator';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import { createQueryClient, createCachePersister, CACHE_MAX_AGE, CACHE_BUSTER } from './src/lib/queryClient';
+import { registerMutationDefaults } from './src/lib/queries';
 import { startNetworkMonitoring } from './src/lib/network';
 import { useAppFonts } from './src/theme/fonts';
 import { useAuthStore } from './src/state/authStore';
 
 const queryClient = createQueryClient();
+// Register offline-durable mutation defaults before the persister restores + resumes paused turns.
+registerMutationDefaults(queryClient);
 const persister = createCachePersister();
 
 // Keep the splash visible until the story font (Lora) is ready, so the reading

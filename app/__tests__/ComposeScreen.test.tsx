@@ -1,14 +1,21 @@
 import { render, userEvent, waitFor } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
 import ComposeScreen from '../src/screens/ComposeScreen';
 import { api, ApiError, type StoryWithTurns } from '../src/lib/api';
+import { registerMutationDefaults } from '../src/lib/queries';
+import { useNetworkStore } from '../src/lib/network';
 import type { Turn } from '../src/domain/types';
 
 jest.mock('../src/lib/api', () => ({
   api: { getStory: jest.fn(), submitTurn: jest.fn(), directorHint: jest.fn() },
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    constructor(status: number, body?: unknown) {
+      super(`API error ${status}`);
+      Object.assign(this, { status, body }); // fields via assign — no class-field babel helper in the factory
+    }
+  },
   BASE_URL: 'http://localhost:4000',
 }));
 
@@ -76,8 +83,15 @@ function renderWithClient(ui: ReactElement) {
   // ComposeScreen mounts useStory(id), so the story cache always has a live observer and is never
   // GC'd mid-test — the default gcTime is fine here (no override needed).
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  registerMutationDefaults(client); // submit-turn mutationFn + optimistic logic live in the defaults
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
+
+afterEach(() => {
+  // Reset connectivity so an offline test can't leak into the next one.
+  onlineManager.setOnline(true);
+  useNetworkStore.setState({ online: true });
+});
 
 beforeEach(() => {
   mockApi.getStory.mockResolvedValue(makeStory([makeTurn('The ferry left before dawn.', 1)]));
@@ -138,6 +152,40 @@ describe('ComposeScreen', () => {
     await waitFor(() => expect(view.getByTestId('submit-error')).toBeTruthy());
     expect(view.getByTestId('turn-input').props.value).toBe('Doomed line.'); // draft preserved
     expect(goBack).not.toHaveBeenCalled();
+  });
+
+  it('a 409 (the story moved on) shows the skipped message and drops the draft', async () => {
+    let reject!: () => void;
+    mockApi.submitTurn.mockReturnValue(
+      new Promise<Turn>((_res, rej) => {
+        reject = () => rej(new ApiError(409, { error: 'turn_moved_on' }));
+      }),
+    );
+    const view = await renderWithClient(<ComposeScreen {...makeProps()} />);
+    const user = userEvent.setup();
+
+    await user.type(view.getByTestId('turn-input'), 'A stale line.');
+    await user.press(view.getByTestId('submit'));
+    reject();
+
+    await waitFor(() => expect(view.getByTestId('submit-error')).toHaveTextContent(/moved on/i));
+    expect(view.getByTestId('turn-input').props.value).toBe(''); // stale → retry won't help, draft dropped
+  });
+
+  it('offline: queues the turn (not sent yet), shows the queued ack, and closes', async () => {
+    onlineManager.setOnline(false); // React Query pauses the mutation
+    useNetworkStore.setState({ online: false }); // the component's offline signal
+    mockApi.submitTurn.mockResolvedValue(makeTurn('queued', 2));
+    const goBack = jest.fn();
+    const view = await renderWithClient(<ComposeScreen {...makeProps({ goBack })} />);
+    const user = userEvent.setup();
+
+    await user.type(view.getByTestId('turn-input'), 'Written on the subway.');
+    await user.press(view.getByTestId('submit'));
+
+    await waitFor(() => expect(view.getByTestId('posted-ack')).toHaveTextContent(/queued/i));
+    expect(mockApi.submitTurn).not.toHaveBeenCalled(); // paused offline — not sent until reconnect
+    await waitFor(() => expect(goBack).toHaveBeenCalled(), { timeout: 2000 });
   });
 
   it('shows the director hint when present and dismisses it without closing', async () => {
