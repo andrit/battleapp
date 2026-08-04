@@ -38,8 +38,9 @@ See `docs/engineering/social-signin-setup.md` (runbook + problem log) for the fu
       *Verified on device 2026-08-03 (Profile dev audit: AsyncStorage keys = `battleapp.prefs` +
       `battleapp.cache.stories` only; token round-trips SecureStore; no AsyncStorage entry holds it).*
 - [ ] Token refresh happens **without** the user seeing a sign-in screen (silent refresh).
-- [ ] **Cold start** with a valid session goes **straight to the app** — no Welcome, and the
-      First-story prompt does **not** re-appear (it's one-time).
+- [x] **Cold start** with a valid session goes **straight to the app** — no Welcome, and the
+      First-story prompt does **not** re-appear (it's one-time). *Verified on device 2026-08-04
+      (force-stopped + relaunched while signed in → landed on the Stories tab).*
 - [ ] **Sign out** clears all stored tokens and returns to Welcome.
 - [ ] Two devices (Dev: Alice / Dev: Bob, or two real Google accounts) → join + turn alternation.
 
