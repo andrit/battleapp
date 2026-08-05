@@ -28,6 +28,13 @@ jest.mock('@react-native-community/netinfo', () => ({
   },
 }));
 
+// Present the native module so startNetworkMonitoring wires the (mocked) listener rather than taking
+// its "native module absent" degrade path. Tests that want the degrade path unset this locally.
+{
+  const { NativeModules } = require('react-native');
+  NativeModules.RNCNetInfo = NativeModules.RNCNetInfo ?? {};
+}
+
 // expo-secure-store wraps native Keychain/Keystore (unavailable in jest). An in-memory mock lets the
 // auth store hydrate/persist in any test. (authStore.test overrides this with its own for assertions.)
 jest.mock('expo-secure-store', () => {

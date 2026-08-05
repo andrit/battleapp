@@ -14,7 +14,14 @@ describe('isOnlineState', () => {
 });
 
 describe('startNetworkMonitoring', () => {
-  it('degrades to online (no crash) when the native NetInfo module is unavailable', () => {
+  it('wires the NetInfo listener when the native module is present', () => {
+    (NetInfo.addEventListener as jest.Mock).mockClear().mockReturnValue(jest.fn());
+    startNetworkMonitoring();
+    expect(NetInfo.addEventListener).toHaveBeenCalled();
+  });
+
+  it('degrades to online (no crash) if loading NetInfo fails', () => {
+    // The native module can be null on a stale build; the guard must not let that crash the app.
     (NetInfo.addEventListener as jest.Mock).mockImplementationOnce(() => {
       throw new Error('@react-native-community/netinfo: NativeModule.RNCNetInfo is null');
     });

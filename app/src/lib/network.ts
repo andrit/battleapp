@@ -6,6 +6,7 @@
  * Call `startNetworkMonitoring()` once at app startup. Replaces the old per-screen `query.isError`
  * "offline" proxy with a real connectivity signal.
  */
+import { NativeModules } from 'react-native';
 import { onlineManager } from '@tanstack/react-query';
 import { create } from 'zustand';
 // Type-only import — erased at runtime, so importing this module never loads the native NetInfo
@@ -37,8 +38,22 @@ export const useNetworkStore = create<NetworkStore>(() => ({ online: true }));
  * listener), so this is meant to be called once from `App` on mount.
  */
 export function startNetworkMonitoring(): void {
+  // Detect the native module WITHOUT loading netinfo — requiring it when RNCNetInfo is null throws at
+  // module-eval and surfaces a dev LogBox error. If it's absent (a build made before it was added),
+  // assume online: the app works, but connectivity features stay off until a build with it is installed.
+  if (!NativeModules.RNCNetInfo) {
+    if (__DEV__) {
+      console.warn(
+        '[network] @react-native-community/netinfo native module unavailable — assuming online. ' +
+          'Install a dev build that includes it to enable offline detection.',
+      );
+    }
+    onlineManager.setOnline(true);
+    useNetworkStore.setState({ online: true });
+    return;
+  }
   try {
-    // Lazy require so a build missing the native module degrades gracefully instead of crashing.
+    // Present → load it lazily (kept guarded as a belt-and-suspenders).
     const NetInfo = require('@react-native-community/netinfo')
       .default as typeof import('@react-native-community/netinfo').default;
     let wasOnline = true; // seeded true so the first emission doesn't count as a "reconnect"
