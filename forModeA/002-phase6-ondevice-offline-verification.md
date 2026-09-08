@@ -10,8 +10,10 @@ Phase 6 is code-complete and green (app 22 suites / 90 tests; server 70 pass / 1
 clean). Connectivity, cache persistence, the offline write queue, and reconnect are exercised by unit
 tests, but the end-to-end *feel* — airplane-mode → queued → reconnect → posts — needs a device.
 
-**No EAS rebuild needed:** every Phase-6 change is **JS** and Metro-reloads onto the existing dev build
-(the native `netinfo` module already landed with Phase-6 Task 1's build). Just
+**One EAS rebuild needed** *(corrected 2026-09-08)*: every Phase-6 change is **JS** and Metro-reloads,
+but the native `netinfo` module never made it into the installed Android build — the Task-1 build
+appears not to have finished during an EAS partial outage. So: rebuild once
+([runbook](../docs/engineering/eas-dev-build-runbook.md)), install, then
 `cd app && npx expo start --dev-client`, reload, and exercise the flows.
 
 ## What to verify on device (maps to the four advance criteria)
@@ -37,8 +39,12 @@ tests, but the end-to-end *feel* — airplane-mode → queued → reconnect → 
 
 ## Notes
 
-- These are all Metro-reloadable (JS only). If "coming soon"/native errors appear, you're on a build
-  predating Phase-6 Task 1's `netinfo` — rebuild once (`eas build --profile development`).
+- These are all Metro-reloadable (JS only) **onto a build that has `netinfo`**. The installed Android
+  build predates it (`RNCNetInfo` null), so a rebuild IS needed first — see the checklist in
+  [`docs/engineering/eas-dev-build-runbook.md`](../docs/engineering/eas-dev-build-runbook.md).
+  **Watch for the silent case:** since `f1493c9` a missing `netinfo` degrades to "assume online"
+  instead of crashing, so a stale build *looks* fine and just never shows the offline banner —
+  step E of the runbook is the check that tells the two apart.
 - `phase_readiness` is already green; this checklist is the on-device confidence gate before advancing
   to **Phase 7 (Push Notifications)** — same pattern as [001](001-phase5-ondevice-oauth-verification.md).
 - Once all boxes are ticked, advance the phase and log it.
