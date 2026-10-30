@@ -1,0 +1,91 @@
+{
+  "model_version": "1.0",
+  "rig": "oracle-storygen",
+  "authoritative_doc": "documents/README.md",
+  "non_negotiable": "The external manuscript is never touched by the rig. The rig persists only ideas, story blocks, an optional shared WIP, and derived data.",
+  "materials": [
+    {
+      "id": "idea",
+      "what": "raw input from the writer",
+      "direction": "in",
+      "optional": false
+    },
+    {
+      "id": "story-block",
+      "what": "a contained, voiced draft piece the writer carries out to the manuscript",
+      "direction": "out",
+      "optional": false
+    },
+    {
+      "id": "wip",
+      "what": "an optional, writer-shared draft of the actual piece, held in-rig to be worked with",
+      "direction": "in",
+      "optional": true,
+      "authoritative": false,
+      "pipeline_stage": null,
+      "zone": "wip",
+      "edits_via": "wip/<wip>-machinima.md",
+      "notes": "Never presumed in sync with the external manuscript. Not a pipeline stage. The writer pushes it in; the rig never pulls. The rig proposes edits via a -machinima sidecar and never edits the WIP in place; carrying any change to the external manuscript is the writer's manual act."
+    }
+  ],
+  "pipeline": {
+    "ordered": true,
+    "axis": "how PROCESSED an idea is, never what it is about",
+    "zones": [
+      {
+        "id": "compost-heap",
+        "stage": 1,
+        "path": "compost-heap/",
+        "semantics": "raw dumps, exactly as written — frozen, append-only, never edited",
+        "reaction": "<source>-machinima.md"
+      },
+      {
+        "id": "garden",
+        "stage": 2,
+        "path": "garden/",
+        "semantics": "a flat living graph of atomic, linked idea-notes — where growth happens",
+        "note_stages": ["seed", "sprout", "branch", "leaf"]
+      },
+      {
+        "id": "canon",
+        "stage": 3,
+        "path": "documents/story/",
+        "semantics": "the distilled truth of this story",
+        "artifacts": ["glossary.md", "token-map.md", "threads/"]
+      }
+    ]
+  },
+  "orthogonal_zones": [
+    {
+      "id": "wip",
+      "path": "wip/",
+      "in_pipeline": false,
+      "optional": true,
+      "semantics": "the optional shared draft of the actual piece; edits are proposed via <wip>-machinima.md and superseded versions are kept in wip/archive/"
+    }
+  ],
+  "tokens": {
+    "id_scheme": "token.<type>.<name>",
+    "types": ["motif", "theme", "flaw", "object", "env"],
+    "jobs": ["generate (Collide)", "track (trajectories + trail-links)"],
+    "boundary": "a design-layer registry, not a line-by-line index of the manuscript"
+  },
+  "canon": {
+    "path": "documents/story/",
+    "artifacts": {
+      "glossary.md": "identity — the bible",
+      "token-map.md": "instrumentation — trajectories and trail-links",
+      "threads/": "Rendered trees (outlines / arcs)"
+    }
+  },
+  "vectors": ["ponder", "bridge", "render"],
+  "lens": {
+    "story": "what the viewer's lens witnesses — what falls inside the frame",
+    "act-zero": "everything outside the frame — the seed before there is a plot"
+  },
+  "knowledgebases": {
+    "craft": { "path": "documents/craft/", "portable": true },
+    "story": { "path": "documents/story/", "portable": false }
+  },
+  "boost": "the one scoped machine-write: on request, turn ideas into one voiced story block, then hand the pen back"
+}
